@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { Bot, User, Upload, Send, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/lib/supabase";
