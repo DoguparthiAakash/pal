@@ -5,9 +5,18 @@ import { DefaultChatTransport } from "ai";
 import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ImageIcon, Link as LinkIcon, Database } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import MindMapRenderer from "@/components/MindMapRenderer";
-import DocumentViewer from "@/components/DocumentViewer";
+import dynamic from "next/dynamic";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+const DocumentViewer = dynamic(() => import('@/components/DocumentViewer'), { 
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full w-full bg-gray-50 dark:bg-[#121214]">
+      <div className="w-8 h-8 border-4 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  )
+});
 
 export default function Home() {
   const [role, setRole] = useState("intern");
