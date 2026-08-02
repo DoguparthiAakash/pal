@@ -5,6 +5,7 @@ import { DefaultChatTransport } from "ai";
 import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ImageIcon, Link as LinkIcon, Database } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import MindMapRenderer from "@/components/MindMapRenderer";
+import DocumentViewer from "@/components/DocumentViewer";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -13,7 +14,7 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [allowedRoles, setAllowedRoles] = useState("ai,intern,hr,engineering,exec,developer,designer,marketer,data_scientist");
   const [uploading, setUploading] = useState(false);
-  
+
   const [notebooks, setNotebooks] = useState<any[]>([]);
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
   const [docs, setDocs] = useState<any[]>([]);
@@ -24,16 +25,17 @@ export default function Home() {
   const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
   const [activeView, setActiveView] = useState<'chat' | 'guide' | 'mindmap' | 'audio' | 'notes' | 'data'>('chat');
   const [viewData, setViewData] = useState<any>(null);
+  const [viewingDocument, setViewingDocument] = useState<{url: string, title: string} | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [newNote, setNewNote] = useState("");
-  
+
   const [activeTopic, setActiveTopic] = useState<any>(null);
   const [topicContent, setTopicContent] = useState<string | null>(null);
   const [isFetchingTopic, setIsFetchingTopic] = useState(false);
 
   const [input, setInput] = useState("");
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
-  
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [searchTopics, setSearchTopics] = useState<any[]>([]);
@@ -50,18 +52,25 @@ export default function Home() {
     }
   };
 
-  const fetchRelatedTopics = async (currentMessages: any[]) => {
+  const fetchRelatedTopics = async (currentMessages: any[], overrideText?: string) => {
     const lastMsg = currentMessages[currentMessages.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant') return;
-    try {
+    let queryText = overrideText;
+    
+    if (!queryText) {
+      if (!lastMsg || lastMsg.role !== 'assistant') return;
       const userMsg = currentMessages.slice().reverse().find((m: any) => m.role === 'user');
       if (!userMsg) return;
-      setIsSearching(true);
+      queryText = typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity";
+    }
+
+    setIsSearching(true);
+    setIsRightSidebarOpen(true); // Open sidebar automatically when searching
+    try {
       const res = await fetch("/api/search", {
         method: "POST",
-        body: JSON.stringify({ 
-          query: typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity",
-          context: typeof lastMsg.content === 'string' ? lastMsg.content : ""
+        body: JSON.stringify({
+          query: queryText,
+          context: lastMsg && typeof lastMsg.content === 'string' ? lastMsg.content : ""
         }),
         headers: { "Content-Type": "application/json" }
       });
@@ -115,7 +124,7 @@ export default function Home() {
   useEffect(() => {
     if (activeNotebookId) {
       fetchDocs();
-      setMessages([]); 
+      setMessages([]);
       setSuggestions([]);
       setActiveView('chat');
     } else {
@@ -208,7 +217,7 @@ export default function Home() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("allowed_roles", allowedRoles);
-    
+
     try {
       const res = await fetch("/api/ingest", { method: "POST", body: formData });
       if (res.ok) {
@@ -318,9 +327,9 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-white dark:bg-[#09090b] text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200 relative overflow-hidden">
-      
+
       {/* Left Sidebar Toggle Button */}
-      <button 
+      <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
         className={`absolute top-4 z-50 p-2 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-300 ${isSidebarOpen ? 'left-[335px]' : 'left-4'}`}
       >
@@ -335,12 +344,12 @@ export default function Home() {
           </div>
           Secure RAG
         </div>
-        
+
         <div className="p-5 border-b border-gray-200 dark:border-white/5">
           <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">Act As (Role)</label>
           <div className="relative">
-            <select 
-              value={role} 
+            <select
+              value={role}
               onChange={(e) => setRole(e.target.value)}
               className="w-full bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white appearance-none shadow-sm transition-colors cursor-pointer"
             >
@@ -355,31 +364,31 @@ export default function Home() {
               <option value="data_scientist">Data Scientist</option>
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-              <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
             </div>
           </div>
         </div>
 
         <div className="p-5 border-b border-gray-200 dark:border-white/5 max-h-64 overflow-y-auto flex-shrink-0">
           <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-             Workspaces
+            Workspaces
           </h3>
           <form onSubmit={handleCreateNotebook} className="flex gap-2 mb-4">
-            <input 
+            <input
               value={newNotebookTitle}
               onChange={(e) => setNewNotebookTitle(e.target.value)}
               placeholder="New Workspace..."
               className="w-full bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white shadow-sm transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-600"
             />
             <button type="submit" className="bg-black dark:bg-white text-white dark:text-black p-2 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-sm flex items-center justify-center shrink-0">
-              <Plus size={18}/>
+              <Plus size={18} />
             </button>
           </form>
           <div className="space-y-1">
             {notebooks.length === 0 && <div className="text-sm text-gray-500 dark:text-gray-500 px-2">No workspaces found.</div>}
             {notebooks.map(nb => (
-              <div 
-                key={nb.id} 
+              <div
+                key={nb.id}
                 onClick={() => setActiveNotebookId(nb.id)}
                 className={`text-sm p-2.5 rounded-lg cursor-pointer truncate transition-all duration-200 font-medium ${activeNotebookId === nb.id ? 'bg-black text-white dark:bg-white dark:text-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/5'}`}
               >
@@ -423,22 +432,22 @@ export default function Home() {
                 Add Source
               </h3>
               <form onSubmit={handleUpload} className="space-y-3">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   onChange={e => setFile(e.target.files?.[0] || null)}
                   className="text-xs w-full text-gray-600 dark:text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 dark:file:bg-white/10 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-white/20 transition-colors"
                   required
                 />
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={allowedRoles}
                   onChange={e => setAllowedRoles(e.target.value)}
                   placeholder="Roles (comma separated)"
                   className="w-full bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white shadow-sm transition-colors placeholder:text-gray-400 dark:placeholder:text-gray-600"
                   required
                 />
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={uploading || !file}
                   className="w-full bg-gray-900 hover:bg-black dark:bg-white dark:hover:bg-gray-200 disabled:opacity-50 text-white dark:text-black rounded-lg p-2 text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
                 >
@@ -459,8 +468,8 @@ export default function Home() {
                       <option key={d.id} value={d.id}>{d.title}</option>
                     ))}
                   </select>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={uploading || !selectedDocIdToLink}
                     className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 text-gray-900 dark:text-white disabled:opacity-50 rounded-lg p-2 text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
                   >
@@ -472,7 +481,7 @@ export default function Home() {
             </div>
             <div className="p-5 flex-1">
               <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                 Sources
+                Sources
               </h3>
               <div className="space-y-2">
                 {docs.length === 0 && <div className="text-sm text-gray-500 dark:text-gray-500 px-1">No sources linked.</div>}
@@ -495,9 +504,43 @@ export default function Home() {
         )}
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col relative bg-white dark:bg-[#0a0a0c] transition-colors duration-200">
-        <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 pb-48 scroll-smooth">
+      {/* Main Content Area Container */}
+      <div className="flex-1 flex overflow-hidden relative bg-white dark:bg-[#0a0a0c]">
+        
+        {/* Document Viewer (Left Split) */}
+        {viewingDocument && (
+          <div className="flex-1 flex flex-col relative border-r border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#121214] animate-in slide-in-from-left-4 duration-300">
+            <div className="absolute top-4 left-4 z-50">
+              <button 
+                onClick={() => setViewingDocument(null)} 
+                className="p-2 px-3 bg-white dark:bg-[#1e1e20] text-gray-700 dark:text-gray-200 rounded-lg shadow-md border border-gray-200 dark:border-white/10 hover:bg-gray-50 flex items-center gap-2 text-xs font-bold transition-transform hover:scale-105"
+              >
+                &larr; Back to Data
+              </button>
+            </div>
+            <DocumentViewer 
+              url={viewingDocument.url} 
+              onAskAI={(text) => {
+                fetchRelatedTopics(messages, text);
+                setInput(`Explain this from the document:\n"${text}"`);
+                setActiveView('chat');
+              }} 
+            />
+          </div>
+        )}
+
+        {/* Chat / Active View Area (Right Split or Full Width) */}
+        <div className={`flex flex-col relative h-full transition-all duration-300 ${viewingDocument ? 'w-1/2 shrink-0 border-l border-gray-200 dark:border-white/5' : 'flex-1'}`}>
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 pb-48 scroll-smooth" onMouseUp={() => {
+            const selection = window.getSelection();
+            if (selection && selection.toString().trim().length > 0 && activeView === 'chat') {
+              const text = selection.toString().trim();
+              if (text.length > 3) {
+                 // Trigger related web search using the selected text!
+                 fetchRelatedTopics(messages, text);
+              }
+            }
+          }}>
           {!activeNotebookId ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-6">
               <div className="w-24 h-24 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center shadow-inner border border-gray-100 dark:border-white/5">
@@ -521,7 +564,7 @@ export default function Home() {
                 ) : activeView === 'notes' ? (
                   <div>
                     <form onSubmit={handleAddNote} className="mb-8 flex gap-3 relative">
-                      <input 
+                      <input
                         value={newNote}
                         onChange={(e) => setNewNote(e.target.value)}
                         placeholder="Jot down a quick note..."
@@ -544,8 +587,8 @@ export default function Home() {
                   </div>
                 ) : activeView === 'mindmap' ? (
                   <div className="relative w-full h-[650px] border border-gray-200 dark:border-white/5 rounded-2xl overflow-hidden bg-gray-50 dark:bg-[#1e1e20]">
-                    <MindMapRenderer 
-                      data={viewData} 
+                    <MindMapRenderer
+                      data={viewData}
                       onNodeClick={(text) => {
                         setInput(`Can you explain this part of the mindmap: "${text}"?`);
                       }}
@@ -561,14 +604,14 @@ export default function Home() {
                         <h3 className="text-2xl font-bold">{activeTopic.title}</h3>
                         {isFetchingTopic ? (
                           <div className="flex items-center gap-3 text-gray-500 py-10">
-                             <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div> 
-                             Generating deep-dive for {activeTopic.title}...
+                            <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                            Generating deep-dive for {activeTopic.title}...
                           </div>
                         ) : (
                           <div className="prose prose-gray dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:text-blue-600 dark:prose-a:text-blue-400 fade-in">
                             <ReactMarkdown
                               components={{
-                                code({node, inline, className, children, ...props}: any) {
+                                code({ node, inline, className, children, ...props }: any) {
                                   const match = /language-(\w+)/.exec(className || '')
                                   return !inline && match ? (
                                     <SyntaxHighlighter
@@ -596,8 +639,8 @@ export default function Home() {
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 fade-in">
                         {viewData?.topics?.map((topic: any) => (
-                          <div 
-                            key={topic.id} 
+                          <div
+                            key={topic.id}
                             onClick={() => fetchTopicContent(topic)}
                             className="p-5 border border-gray-200 dark:border-white/10 rounded-2xl cursor-pointer hover:border-black dark:hover:border-white transition-colors group bg-white dark:bg-[#1e1e20] shadow-sm hover:shadow-md"
                           >
@@ -625,7 +668,7 @@ export default function Home() {
                             </h4>
                             <span className="text-xs text-gray-400 font-mono">{new Date(doc.created_at).toLocaleDateString()}</span>
                           </div>
-                          
+
                           <div className="flex flex-wrap gap-2">
                             {doc.allowed_roles?.map((r: string) => (
                               <span key={r} className="bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md text-xs font-medium">
@@ -634,15 +677,18 @@ export default function Home() {
                             ))}
                           </div>
 
-                          <a 
-                            href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${activeNotebookId}/${doc.id}`}
-                            target="_blank" 
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => {
+                              setViewingDocument({
+                                url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${activeNotebookId}/${doc.id}`,
+                                title: doc.title
+                              });
+                            }}
                             className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline mt-2 w-fit"
                           >
                             <LinkIcon size={14} />
-                            View Raw File
-                          </a>
+                            View Document
+                          </button>
                         </div>
                       ))
                     )}
@@ -680,15 +726,15 @@ export default function Home() {
                         <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:my-4">
                           <ReactMarkdown
                             components={{
-                              code: ({node, inline, className, children, ...props}: any) => {
+                              code: ({ node, inline, className, children, ...props }: any) => {
                                 const match = /citation:([0-9a-fA-F-]+):([0-9a-fA-F-]+)/.exec(String(children));
                                 if (inline && match) {
                                   return (
-                                    <span 
-                                      className="inline-flex items-center justify-center bg-gray-100 dark:bg-white/10 text-gray-900 dark:text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full cursor-help ml-1 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors border border-gray-200 dark:border-white/10 align-super" 
+                                    <span
+                                      className="inline-flex items-center justify-center bg-gray-100 dark:bg-white/10 text-gray-900 dark:text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full cursor-help ml-1 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors border border-gray-200 dark:border-white/10 align-super"
                                       title={`Doc: ${match[1]}\nChunk: ${match[2]}`}
                                     >
-                                      {match[1].substring(0,2)}
+                                      {match[1].substring(0, 2)}
                                     </span>
                                   );
                                 }
@@ -721,21 +767,21 @@ export default function Home() {
                 <div className="flex w-full justify-start p-2 fade-in">
                   <div className="py-2 text-gray-500 dark:text-gray-400 text-[15px] flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></div>
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
                   </div>
                 </div>
               )}
               <div ref={endOfMessagesRef} className="h-4"></div>
             </div>
           )}
-          
+
           {/* Suggestions */}
-          {!isLoading && suggestions.length > 0 && messages.length > 0 && messages[messages.length-1].role === 'assistant' && activeView === 'chat' && (
+          {!isLoading && suggestions.length > 0 && messages.length > 0 && messages[messages.length - 1].role === 'assistant' && activeView === 'chat' && (
             <div className="flex flex-wrap gap-2 max-w-3xl mx-auto mt-2 pl-14 fade-in">
               {suggestions.map((s, i) => (
-                <button 
-                  key={i} 
+                <button
+                  key={i}
                   onClick={() => { setInput(s); }}
                   className="bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 text-sm px-4 py-2 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-white/10 transition-colors flex items-center gap-1.5 font-medium"
                 >
@@ -777,9 +823,10 @@ export default function Home() {
           </div>
         </div>
       </div>
+    </div>
 
       {/* Right Sidebar Toggle Button */}
-      <button 
+      <button
         onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
         className={`absolute top-4 z-50 p-2 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-300 ${isRightSidebarOpen ? 'right-[335px]' : 'right-4'}`}
       >
@@ -814,7 +861,7 @@ export default function Home() {
               ))
             ) : (
               <div className="text-sm text-gray-400 dark:text-gray-500 p-4 border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-center">
-                Ask a question to see related web topics inline.
+                Select text in a document or chat to see related web topics inline.
               </div>
             )}
           </div>
@@ -846,5 +893,7 @@ export default function Home() {
       </div>
 
     </div>
+
+
   );
 }
