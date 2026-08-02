@@ -130,6 +130,16 @@ export async function POST(req: Request) {
 
   } catch (err: any) {
     console.error('Chat error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Send the error to the chat UI instead of just failing silently
+    const encoder = new TextEncoder();
+    const mockStream = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(encoder.encode(`0:"An error occurred: ${err.message}"\n`));
+        controller.close();
+      }
+    });
+    return new Response(mockStream, {
+      headers: { 'Content-Type': 'text/event-stream', 'x-vercel-ai-data-stream': 'v1' }
+    });
   }
 }
