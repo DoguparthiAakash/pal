@@ -3,7 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { openai } from '@ai-sdk/openai';
 import { groq } from '@ai-sdk/groq';
 import { streamText, embed, tool, isStepCount } from 'ai';
-import { search } from 'duck-duck-scrape';
 import { z } from 'zod';
 
 export async function POST(req: Request) {
