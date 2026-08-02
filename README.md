@@ -25,7 +25,7 @@ The retrieval filter enforces strict RLS-like logic at the query level `(user_ro
 
 *Pass rate: 100% (15/15 test cases passed).*
 
-## Architecture
+## Tech Stack & Architecture
 - **Frontend**: Next.js App Router (React, TailwindCSS, Vercel AI SDK)
 - **Backend API**: Next.js Serverless Routes
 - **Database**: Supabase PostgreSQL with `pgvector` extension
