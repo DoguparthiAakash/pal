@@ -1,6 +1,7 @@
 {
   "name": "pal",
   "version": "0.1.0",
+  "description": "A secure, enterprise-grade Retrieval-Augmented Generation (RAG) assistant utilizing Supabase pgvector and LLMs for intelligent, role-aware document answering.",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -1,5 +1,7 @@
 # Pal
 
+**Pal** is a secure, enterprise-grade Retrieval-Augmented Generation (RAG) assistant designed for intelligent, role-aware document answering. It utilizes Supabase `pgvector` for efficient similarity search and Groq's fast Llama 3 models for complex reasoning. A key feature of Pal is its strict, query-level access control that prevents unauthorized data leaks by filtering embeddings *before* they are sent to the LLM.
+
 **Live URL**: [Pending Vercel Deployment — Requires User Tokens]  
 *Note: Due to lack of deployment tokens in the environment, you must deploy this using `npx vercel` or push to a GitHub repo linked to Vercel.*
 
