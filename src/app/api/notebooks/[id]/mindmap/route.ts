@@ -7,7 +7,7 @@ import { z } from 'zod';
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userRole } = await req.json();
+    const { userRole, offset = 0 } = await req.json();
     
     if (!userRole) {
       return NextResponse.json({ error: 'Missing userRole' }, { status: 400 });
@@ -43,39 +43,49 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
     }
     
-    const contextText = chunks.slice(0, 40).map((c: any) => c.content).join('\n\n');
+    // Process a max of 5 chunks per batch
+    const batchSize = 5;
+    const currentChunks = chunks.slice(offset, offset + batchSize);
+    
+    if (currentChunks.length === 0) {
+      return NextResponse.json({ mermaid: "", nextOffset: null });
+    }
+    
+    const contextText = currentChunks.map((c: any) => c.content).join('\n\n');
+    const hasMore = offset + batchSize < chunks.length;
+    const nextOffset = hasMore ? offset + batchSize : null;
     
     if (process.env.GROQ_API_KEY) {
+      const isFirst = offset === 0;
+      
       const systemPrompt = `You are a helpful company assistant. Based on the following workspace content, generate a structured top-down flowchart representing key topics and their relationships using Mermaid.js syntax.
-Output ONLY the raw Mermaid diagram string (starting with \`flowchart TD\`). Do not wrap it in markdown code blocks.
+Output ONLY the raw Mermaid diagram string. Do not wrap it in markdown code blocks.
 
 CRITICAL INSTRUCTIONS:
-- You MUST use a top-down flowchart starting exactly with "flowchart TD".
+${isFirst ? '- You MUST start the flowchart exactly with "flowchart TD".' : '- DO NOT include the "flowchart TD" header. Output ONLY the node relationships/edges.'}
 - Use simple square brackets for node text without quotes, e.g., A[Topic Name].
 - Use standard arrows (-->) for connections.
-- Create a logical, branching tree structure starting from a single root node.
 - DO NOT output any <tool_call> tags, do not attempt to use tools, and DO NOT output XML. Just raw Mermaid.
 - Example of desired format:
-flowchart TD
-  Root[Main Subject] --> T1[Topic 1]
+${isFirst ? 'flowchart TD\n' : ''}  Root[Main Subject] --> T1[Topic 1]
   Root --> T2[Topic 2]
   T1 --> S1[Subtopic 1]
-  T1 --> S2[Subtopic 2]
 
 CONTENT:
 ${contextText}
 `;
       const { text } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('llama-3.1-8b-instant'),
         system: systemPrompt,
-        messages: [{ role: 'user', content: 'Generate mermaid UML graph.' }],
+        messages: [{ role: 'user', content: 'Generate mermaid UML graph relationships.' }],
       });
       
-      return NextResponse.json({ mermaid: text });
+      return NextResponse.json({ mermaid: text, nextOffset });
     } else {
+      const isFirst = offset === 0;
       return NextResponse.json({ 
-        mermaid: `flowchart TD
-  Mock[No Groq Key]`
+        mermaid: isFirst ? `flowchart TD\n  Mock[Mock Root ${offset}]` : `\n  Mock[Mock Root ${offset}] --> T[Topic ${offset}]`,
+        nextOffset
       });
     }
 

@@ -36,6 +36,7 @@ export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNo
         rankSpacing: 100
       },
       securityLevel: 'loose',
+      maxTextSize: 5000000, // Very large to prevent errors with big chunked diagrams
     });
 
     const renderChart = async () => {
@@ -56,8 +57,10 @@ export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNo
           
           // Generate a random progress for visual flair matching the UI image
           const progress = Math.floor(Math.random() * 60) + 20; 
+          // Escape quotes so Mermaid doesn't break
+          const safeText = text.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
           
-          return `["<div class='mindmap-node-inner' data-text='${text.replace(/'/g, "&apos;").replace(/"/g, "&quot;")}' style='display:flex;flex-direction:column;align-items:center;gap:12px;padding:4px 12px;cursor:pointer;'><div style='font-family:inherit;font-weight:600;font-size:14px;color:#ffffff;text-align:center;'>${text}</div><div style='width:140px;height:6px;background:#ffffff;border-radius:3px;overflow:hidden;display:flex;'><div style='width:${progress}%;height:100%;background:#10b981;border-radius:3px;'></div></div></div>"]`;
+          return `["<div class='mindmap-node-inner' data-text='${safeText}' style='display:flex;flex-direction:column;align-items:center;gap:12px;padding:4px 12px;cursor:pointer;'><div style='font-family:inherit;font-weight:600;font-size:14px;color:#ffffff;text-align:center;'>${safeText}</div><div style='width:140px;height:6px;background:#ffffff;border-radius:3px;overflow:hidden;display:flex;'><div style='width:${progress}%;height:100%;background:#10b981;border-radius:3px;'></div></div></div>"]`;
         });
 
         // Add classDef for the custom styling matching the image
@@ -74,6 +77,17 @@ export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNo
       } catch (err) {
         console.error('Mermaid render error:', err);
         setSvgContent(`<div class="text-red-500">Failed to render mind map graph.</div>`);
+        
+        // Clean up Mermaid's rogue error SVGs that get appended to the body
+        try {
+          const errorElement = document.getElementById('d' + id);
+          if (errorElement) errorElement.remove();
+          
+          // Fallback: remove any element that looks like a mermaid error
+          document.querySelectorAll('[id^="dmermaid-chart-"]').forEach(el => el.remove());
+        } catch (cleanupErr) {
+          console.error('Failed to cleanup mermaid errors:', cleanupErr);
+        }
       }
     };
 
@@ -92,9 +106,10 @@ export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNo
       {/* Zoom/Pan wrapper allows the user to explore the full native size of the graph */}
       <TransformWrapper
         initialScale={1}
-        minScale={0.1}
-        maxScale={20}
+        minScale={0.01}
+        maxScale={100}
         centerOnInit={true}
+        limitToBounds={false}
         wheel={{ step: 0.1 }}
         doubleClick={{ disabled: false, step: 0.5 }}
       >

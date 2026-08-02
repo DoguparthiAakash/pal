@@ -37,28 +37,53 @@ function chunkText(text: string, maxTokens: number = 400): string[] {
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    const allowedRolesStr = formData.get('allowed_roles') as string;
+    const contentType = req.headers.get('content-type') || '';
+    let docId, fileName, allowedRolesStr;
+    let buffer: Buffer;
     
-    if (!file || !allowedRolesStr) {
-      return NextResponse.json({ error: 'Missing file or allowed_roles' }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      docId = body.docId;
+      fileName = body.fileName;
+      allowedRolesStr = body.allowedRoles;
+      
+      if (!docId || !fileName || !allowedRolesStr) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+      
+      const { data, error } = await supabase.storage.from('documents').download(docId);
+      if (error || !data) {
+        throw new Error('Failed to download document from storage for processing');
+      }
+      
+      const arrayBuffer = await data.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else {
+      // Legacy FormData fallback
+      const formData = await req.formData();
+      const file = formData.get('file') as File;
+      allowedRolesStr = formData.get('allowed_roles') as string;
+      
+      if (!file || !allowedRolesStr) {
+        return NextResponse.json({ error: 'Missing file or allowed_roles' }, { status: 400 });
+      }
+      
+      fileName = file.name;
+      const arrayBuffer = await file.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
     }
     
-    const allowedRoles = allowedRolesStr.split(',').map(r => r.trim()).filter(Boolean);
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const allowedRoles = allowedRolesStr.split(',').map((r: string) => r.trim()).filter(Boolean);
     
     let text = '';
     
-    if (file.name.endsWith('.pdf')) {
+    if (fileName.endsWith('.pdf')) {
       const parsed = await pdfParse(buffer);
       text = parsed.text;
-    } else if (file.name.endsWith('.docx')) {
+    } else if (fileName.endsWith('.docx')) {
       const result = await mammoth.extractRawText({ buffer });
       text = result.value;
     } else {
-      // assume text/markdown
       text = buffer.toString('utf-8');
     }
     
@@ -69,28 +94,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No text extracted' }, { status: 400 });
     }
 
-    const { data: doc, error: docError } = await supabase
-      .from('documents')
-      .insert({
-        title: file.name,
-        allowed_roles: allowedRoles,
-        allowed_user_ids: []
-      })
-      .select()
-      .single();
-      
-    if (docError) throw docError;
-
-    // Upload the file to Supabase Storage so it can be viewed later
-    const { error: storageError } = await supabase.storage
-      .from('documents')
-      .upload(`${doc.id}`, buffer, {
-        contentType: file.type || 'application/pdf',
-        upsert: true
-      });
-      
-    if (storageError) {
-      console.warn('Failed to upload file to storage, but text was extracted:', storageError);
+    let insertId = docId;
+    let doc;
+    
+    if (insertId) {
+       const { data, error } = await supabase.from('documents').insert({ id: insertId, title: fileName, allowed_roles: allowedRoles, allowed_user_ids: [] }).select().single();
+       if (error) throw error;
+       doc = data;
+    } else {
+       const { data, error } = await supabase.from('documents').insert({ title: fileName, allowed_roles: allowedRoles, allowed_user_ids: [] }).select().single();
+       if (error) throw error;
+       doc = data;
+       insertId = doc.id;
+       // Upload the file to Supabase Storage if it was FormData (legacy)
+       const { error: storageError } = await supabase.storage.from('documents').upload(insertId, buffer, { upsert: true });
+       if (storageError) console.error("Storage error:", storageError);
     }
 
     const chunks = chunkText(text);

@@ -53,7 +53,7 @@ export async function POST(req: Request) {
           .select('id, document_id, content')
           .in('document_id', docIds)
           .contains('allowed_roles', [userRole])
-          .limit(40);
+          .limit(10);
           
         if (fcError) throw fcError;
         chunks = fallbackChunks;
@@ -64,7 +64,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ suggestions: ["Tell me more about this notebook.", "What documents are available?"] });
     }
     
-    const contextText = chunks.map((c: any) => c.content).join('\n\n');
+    let contextText = chunks.map((c: any) => c.content).join('\n\n');
+    if (contextText.length > 10000) {
+      contextText = contextText.substring(0, 10000) + '\n\n... [Content truncated due to API context limits]';
+    }
     
     if (process.env.GROQ_API_KEY) {
       const systemPrompt = `You are a helpful company assistant. Based on the following conversation and the context provided, generate exactly 3 short follow-up questions the user could ask next.

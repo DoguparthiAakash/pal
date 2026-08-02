@@ -2,12 +2,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ImageIcon, Link as LinkIcon, Database } from "lucide-react";
+import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ImageIcon, Link as LinkIcon, Database, Mic, Sparkles, X, ChevronRight, StopCircle, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import MindMapRenderer from "@/components/MindMapRenderer";
 import dynamic from "next/dynamic";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { supabaseClient } from '@/lib/supabaseClient';
 
 const DocumentViewer = dynamic(() => import('@/components/DocumentViewer'), { 
   ssr: false,
@@ -49,6 +50,7 @@ export default function Home() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [searchTopics, setSearchTopics] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [globalSelectionMenu, setGlobalSelectionMenu] = useState<{ x: number, y: number, text: string } | null>(null);
 
   const scrollToMessage = (msgId: string) => {
     const el = document.getElementById(`msg-${msgId}`);
@@ -63,13 +65,21 @@ export default function Home() {
 
   const fetchRelatedTopics = async (currentMessages: any[], overrideText?: string) => {
     const lastMsg = currentMessages[currentMessages.length - 1];
-    let queryText = overrideText;
     
+    // Pass recent messages to the backend for better contextual search extraction
+    const recentMessages = currentMessages.slice(-4).map((m: any) => ({
+      role: m.role,
+      content: typeof m.content === 'string' 
+        ? m.content 
+        : (Array.isArray(m.content) ? m.content.map((p:any) => p.text || (p.type === 'text' ? p.text : '')).join('') : '')
+    }));
+
+    let queryText = overrideText;
     if (!queryText) {
       if (!lastMsg || lastMsg.role !== 'assistant') return;
-      const userMsg = currentMessages.slice().reverse().find((m: any) => m.role === 'user');
+      const userMsg = recentMessages.slice().reverse().find((m: any) => m.role === 'user');
       if (!userMsg) return;
-      queryText = typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity";
+      queryText = userMsg.content || "cybersecurity";
     }
 
     setIsSearching(true);
@@ -79,6 +89,7 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify({
           query: queryText,
+          messages: recentMessages,
           context: lastMsg && typeof lastMsg.content === 'string' ? lastMsg.content : ""
         }),
         headers: { "Content-Type": "application/json" }
@@ -223,12 +234,33 @@ export default function Home() {
     e.preventDefault();
     if (!file || !activeNotebookId) return;
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("allowed_roles", allowedRoles);
-
+    
     try {
-      const res = await fetch("/api/ingest", { method: "POST", body: formData });
+      const docId = crypto.randomUUID();
+      
+      // Upload directly to Supabase storage from the client
+      const { error: storageError } = await supabaseClient.storage
+        .from('documents')
+        .upload(docId, file, {
+          contentType: file.type || 'application/pdf',
+          upsert: true
+        });
+
+      if (storageError) {
+        throw new Error(`Storage upload failed: ${storageError.message}`);
+      }
+
+      // Tell backend to process the file
+      const res = await fetch("/api/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docId,
+          fileName: file.name,
+          allowedRoles
+        })
+      });
+
       if (res.ok) {
         const result = await res.json();
         await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
@@ -242,8 +274,9 @@ export default function Home() {
         const errorText = await res.text();
         alert("Upload failed: " + errorText);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert("Upload failed: " + err.message);
     }
     setUploading(false);
     setFile(null);
@@ -278,6 +311,41 @@ export default function Home() {
       if (view === 'notes') {
         const res = await fetch(`/api/notebooks/${activeNotebookId}/notes`);
         if (res.ok) setViewData(await res.json());
+      } else if (view === 'guide' || view === 'mindmap') {
+        let currentOffset = 0;
+        let hasMore = true;
+        let iterations = 0;
+        const maxIterations = 5;
+        
+        let combinedData: any = view === 'guide' ? { topics: [] } : { mermaid: '' };
+        
+        while (hasMore && iterations < maxIterations) {
+          const res = await fetch(`/api/notebooks/${activeNotebookId}/${view}`, {
+            method: "POST",
+            body: JSON.stringify({ userRole: role, offset: currentOffset }),
+            headers: { "Content-Type": "application/json" }
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (view === 'guide') {
+              combinedData.topics = [...combinedData.topics, ...(data.topics || [])];
+              setViewData({...combinedData}); // trigger re-render
+            } else if (view === 'mindmap') {
+              combinedData.mermaid += (data.mermaid ? '\n' + data.mermaid : '');
+              setViewData({...combinedData}); // trigger re-render
+            }
+            
+            if (data.nextOffset !== null && data.nextOffset !== undefined) {
+              currentOffset = data.nextOffset;
+            } else {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
+          iterations++;
+        }
       } else {
         const res = await fetch(`/api/notebooks/${activeNotebookId}/${view}`, {
           method: "POST",
@@ -286,11 +354,7 @@ export default function Home() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (view === 'mindmap' || view === 'guide') {
-            setViewData(data);
-          } else {
-            setViewData(data[view === 'audio' ? 'script' : view]);
-          }
+          setViewData(data[view === 'audio' ? 'script' : view]);
         }
       }
     } catch (e) {
@@ -540,14 +604,41 @@ export default function Home() {
 
         {/* Chat / Active View Area (Right Split or Full Width) */}
         <div className={`flex flex-col relative h-full transition-all duration-300 ${viewingDocument ? 'w-1/2 shrink-0 border-l border-gray-200 dark:border-white/5' : 'flex-1'}`}>
+          {globalSelectionMenu && (
+            <button
+              onClick={() => {
+                fetchRelatedTopics(messages, globalSelectionMenu.text);
+                setInput(`Explain this:\n"${globalSelectionMenu.text}"`);
+                setActiveView('chat');
+                setGlobalSelectionMenu(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+              className="fixed z-[100] bg-black dark:bg-white text-white dark:text-black shadow-lg rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1 hover:scale-105 transition-transform cursor-pointer"
+              style={{ top: globalSelectionMenu.y, left: globalSelectionMenu.x }}
+              onMouseDown={(e) => e.preventDefault()} // Keep selection
+            >
+              <Search size={12} /> Ask AI
+            </button>
+          )}
           <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 pb-48 scroll-smooth" onMouseUp={() => {
             const selection = window.getSelection();
-            if (selection && selection.toString().trim().length > 0 && activeView === 'chat') {
+            if (selection && selection.toString().trim().length > 0) {
               const text = selection.toString().trim();
               if (text.length > 3) {
                  // Trigger related web search using the selected text!
                  fetchRelatedTopics(messages, text);
+                 
+                 // Show Ask AI popup
+                 const range = selection.getRangeAt(0);
+                 const rect = range.getBoundingClientRect();
+                 setGlobalSelectionMenu({
+                   x: rect.left + (rect.width / 2) - 40,
+                   y: rect.top - 40,
+                   text: text
+                 });
               }
+            } else {
+              setGlobalSelectionMenu(null);
             }
           }}>
           {!activeNotebookId ? (

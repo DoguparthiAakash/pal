@@ -4,19 +4,29 @@ import { groq } from '@ai-sdk/groq';
 
 export async function POST(req: Request) {
   try {
-    const { query, context } = await req.json();
+    const { query, context, messages } = await req.json();
     let searchQuery = query;
 
     // Use Groq to determine the best search query based on the conversation context
-    if (context && process.env.GROQ_API_KEY) {
+    if (process.env.GROQ_API_KEY) {
       try {
-        const result = await generateText({
-          model: groq('llama-3.3-70b-versatile'),
-          system: 'You are an AI assistant that extracts the single most relevant search query based on a conversation. Return ONLY the search query text, no quotes or explanation.',
-          prompt: `User asked: ${query}\nAssistant replied: ${context.substring(0, 500)}\n\nWhat is the most relevant 2-5 word search query to find more info on the web?`
-        });
-        if (result.text) {
-          searchQuery = result.text.trim().replace(/['"]/g, '');
+        let promptText = "";
+        if (messages && messages.length > 0) {
+          const conversation = messages.map((m: any) => `${m.role.toUpperCase()}: ${m.content.substring(0, 500)}`).join('\n');
+          promptText = `Conversation:\n${conversation}\n\nWhat is the most relevant 2-5 word search query to find more info on the web about the user's latest topic?`;
+        } else if (context) {
+          promptText = `User asked: ${query}\nAssistant replied: ${context.substring(0, 500)}\n\nWhat is the most relevant 2-5 word search query to find more info on the web?`;
+        }
+
+        if (promptText) {
+          const result = await generateText({
+            model: groq('llama-3.1-8b-instant'),
+            system: 'You are an AI assistant that extracts the single most relevant search query based on a conversation. Return ONLY the search query text, no quotes or explanation. The query should be optimized for a search engine.',
+            prompt: promptText
+          });
+          if (result.text) {
+            searchQuery = result.text.trim().replace(/['"]/g, '');
+          }
         }
       } catch (e) {
         console.error('Groq query generation failed:', e);

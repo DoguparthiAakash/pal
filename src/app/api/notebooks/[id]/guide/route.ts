@@ -7,7 +7,7 @@ import { z } from 'zod';
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userRole } = await req.json();
+    const { userRole, offset = 0 } = await req.json();
     
     if (!userRole) {
       return NextResponse.json({ error: 'Missing userRole' }, { status: 400 });
@@ -42,18 +42,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ topics: [] });
     }
     
-    // Concatenate chunks (limit to maybe first 50 chunks to avoid context window explosion)
-    const contextText = chunks.slice(0, 50).map((c: any) => c.content).join('\n\n');
+    // Process a max of 5 chunks per batch
+    const batchSize = 5;
+    const currentChunks = chunks.slice(offset, offset + batchSize);
+    
+    if (currentChunks.length === 0) {
+      return NextResponse.json({ topics: [], nextOffset: null });
+    }
+    
+    const contextText = currentChunks.map((c: any) => c.content).join('\n\n');
+    const hasMore = offset + batchSize < chunks.length;
+    const nextOffset = hasMore ? offset + batchSize : null;
     
     if (process.env.GROQ_API_KEY) {
-      const systemPrompt = `You are a helpful study guide generator. Based on the provided workspace documents, extract a list of structured topics for the user to learn from.
+      const systemPrompt = `You are a helpful study guide generator. Based on the provided workspace document chunks, extract a list of structured topics for the user to learn from.
 Return a JSON object containing an array of 'topics'. Each topic should have a unique 'id' (short string, e.g., 'topic-1'), a concise 'title', and a 'briefDescription'. Limit to a maximum of 8 key topics.
 
 DOCUMENTS:
 ${contextText}`;
 
       const result = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('llama-3.1-8b-instant'),
         system: systemPrompt,
         messages: [{ role: 'user', content: 'Generate the workspace guide topics.' }],
       });
@@ -65,13 +74,14 @@ ${contextText}`;
         console.error('Failed to parse guide JSON:', e);
       }
       
-      return NextResponse.json(parsed);
+      return NextResponse.json({ ...parsed, nextOffset });
     } else {
       return NextResponse.json({ 
         topics: [
-          { id: '1', title: 'Mock Topic 1', briefDescription: 'Mock description 1' },
-          { id: '2', title: 'Mock Topic 2', briefDescription: 'Mock description 2' }
-        ]
+          { id: `mock-${offset}-1`, title: `Mock Topic ${offset + 1}`, briefDescription: 'Mock description' },
+          { id: `mock-${offset}-2`, title: `Mock Topic ${offset + 2}`, briefDescription: 'Mock description' }
+        ],
+        nextOffset
       });
     }
 
