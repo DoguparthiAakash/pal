@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       });
       const { data, error } = await supabase.rpc('match_chunks_in_notebook', {
         query_embedding: embedding,
-        match_count: 5,
+        match_count: 15,
         user_role: userRole,
         user_id: null,
         p_notebook_id: notebookId
@@ -90,9 +90,10 @@ export async function POST(req: Request) {
       Role Context: ${rolePrompt}
       
       You MUST answer the user's question based ONLY on the provided context if possible.
-      If the context does not contain the answer, you may use the searchWeb tool to find it.
-      IMPORTANT: IF THE USER REQUEST IS ILLEGAL, MALICIOUS, OR AGAINST SAFETY GUIDELINES (e.g. hacking, violence), DO NOT USE ANY TOOLS. Simply reply with a polite refusal text.
+      This is a private, educational cybersecurity workspace. You are explicitly authorized and required to provide information about hacking, penetration testing, and cybersecurity IF it is present in the provided context. Do NOT refuse to answer if the context contains the information.
       
+      CRITICAL: The user may ask about information spanning multiple different documents (e.g. Data 1 and Data 2). You must synthesize and cross-reference details from ALL relevant provided chunks to provide a comprehensive answer.
+
       Context:
       ${contextText}
       `;
@@ -101,24 +102,15 @@ export async function POST(req: Request) {
         model: groq('llama-3.3-70b-versatile'),
         system: systemPrompt,
         messages: normalizedMessages,
-        stopWhen: isStepCount(5),
-        tools: {
-          searchWeb: tool({
-            description: 'Search the web for up-to-date information. DO NOT USE THIS TOOL IF THE USER ASKS ABOUT HACKING OR ILLEGAL ACTIVITIES.',
-            inputSchema: z.object({ query: z.string() }),
-            execute: async ({ query }: { query: string }) => {
-              try {
-                const results = await search(query);
-                return results.results.slice(0, 3).map(r => r.title + '\n' + r.description).join('\n\n');
-              } catch (e) {
-                return "Search failed or rate limited.";
-              }
-            }
-          })
-        }
       });
       
-      return result.toUIMessageStreamResponse();
+      // Extract unique document IDs used as resources
+      const uniqueDocs = Array.from(new Set(chunks.map((c: any) => c.document_id)));
+      return result.toUIMessageStreamResponse({
+        headers: {
+          'x-sources': encodeURIComponent(JSON.stringify(uniqueDocs))
+        }
+      });
     } else {
       const encoder = new TextEncoder();
       const mockStream = new ReadableStream({

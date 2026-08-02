@@ -54,6 +54,7 @@ CRITICAL INSTRUCTIONS:
 - Use simple square brackets for node text without quotes, e.g., A[Topic Name].
 - Use standard arrows (-->) for connections.
 - Create a logical, branching tree structure starting from a single root node.
+- DO NOT output any <tool_call> tags, do not attempt to use tools, and DO NOT output XML. Just raw Mermaid.
 - Example of desired format:
 flowchart TD
   Root[Main Subject] --> T1[Topic 1]

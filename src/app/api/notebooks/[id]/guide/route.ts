@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { groq } from '@ai-sdk/groq';
-import { generateObject } from 'ai';
+import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,20 +52,20 @@ Return a JSON object containing an array of 'topics'. Each topic should have a u
 DOCUMENTS:
 ${contextText}`;
 
-      const result = await generateObject({
+      const result = await generateText({
         model: groq('llama-3.3-70b-versatile'),
         system: systemPrompt,
-        schema: z.object({
-          topics: z.array(z.object({
-            id: z.string(),
-            title: z.string(),
-            briefDescription: z.string()
-          }))
-        }),
         messages: [{ role: 'user', content: 'Generate the workspace guide topics.' }],
       });
       
-      return NextResponse.json(result.object);
+      let parsed = { topics: [] };
+      try {
+        parsed = JSON.parse(result.text.match(/\{[\s\S]*\}/)?.[0] || '{"topics":[]}');
+      } catch (e) {
+        console.error('Failed to parse guide JSON:', e);
+      }
+      
+      return NextResponse.json(parsed);
     } else {
       return NextResponse.json({ 
         topics: [

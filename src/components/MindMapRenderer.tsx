@@ -5,7 +5,7 @@ import mermaid from 'mermaid';
 import { useTheme } from 'next-themes';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
-export default function MindMapRenderer({ data }: { data: any }) {
+export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNodeClick?: (text: string) => void }) {
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const [svgContent, setSvgContent] = useState<string>('');
@@ -32,8 +32,8 @@ export default function MindMapRenderer({ data }: { data: any }) {
       },
       flowchart: {
         curve: 'stepBefore',
-        nodeSpacing: 50,
-        rankSpacing: 50
+        nodeSpacing: 100,
+        rankSpacing: 100
       },
       securityLevel: 'loose',
     });
@@ -57,7 +57,7 @@ export default function MindMapRenderer({ data }: { data: any }) {
           // Generate a random progress for visual flair matching the UI image
           const progress = Math.floor(Math.random() * 60) + 20; 
           
-          return `["<div style='display:flex;flex-direction:column;align-items:center;gap:12px;padding:4px 12px;'><div style='font-family:inherit;font-weight:600;font-size:14px;color:#ffffff;text-align:center;'>${text}</div><div style='width:140px;height:6px;background:#ffffff;border-radius:3px;overflow:hidden;display:flex;'><div style='width:${progress}%;height:100%;background:#10b981;border-radius:3px;'></div></div></div>"]`;
+          return `["<div class='mindmap-node-inner' data-text='${text.replace(/'/g, "&apos;").replace(/"/g, "&quot;")}' style='display:flex;flex-direction:column;align-items:center;gap:12px;padding:4px 12px;cursor:pointer;'><div style='font-family:inherit;font-weight:600;font-size:14px;color:#ffffff;text-align:center;'>${text}</div><div style='width:140px;height:6px;background:#ffffff;border-radius:3px;overflow:hidden;display:flex;'><div style='width:${progress}%;height:100%;background:#10b981;border-radius:3px;'></div></div></div>"]`;
         });
 
         // Add classDef for the custom styling matching the image
@@ -93,9 +93,10 @@ export default function MindMapRenderer({ data }: { data: any }) {
       <TransformWrapper
         initialScale={1}
         minScale={0.1}
-        maxScale={4}
+        maxScale={20}
         centerOnInit={true}
         wheel={{ step: 0.1 }}
+        doubleClick={{ disabled: false, step: 0.5 }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
@@ -130,10 +131,20 @@ export default function MindMapRenderer({ data }: { data: any }) {
             </div>
             
             <TransformComponent 
-              wrapperClass="flex-1 w-full"
+              wrapperStyle={{ width: '100%', height: '100%', flex: 1 }}
             >
               <div 
                 className="min-w-full min-h-full flex justify-center items-center cursor-grab active:cursor-grabbing p-12"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  const nodeInner = target.closest('.mindmap-node-inner');
+                  if (nodeInner && onNodeClick) {
+                    const text = nodeInner.getAttribute('data-text');
+                    if (text) {
+                      onNodeClick(text);
+                    }
+                  }
+                }}
                 dangerouslySetInnerHTML={{ __html: svgContent }}
               />
             </TransformComponent>

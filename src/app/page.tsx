@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search } from "lucide-react";
+import { Bot, User, Upload, Send, FileText, Book, Plus, MessageSquare, Headphones, Map, AlignLeft, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ImageIcon, Link as LinkIcon, Database } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import MindMapRenderer from "@/components/MindMapRenderer";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -22,7 +22,7 @@ export default function Home() {
   const [newNotebookTitle, setNewNotebookTitle] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
-  const [activeView, setActiveView] = useState<'chat' | 'guide' | 'mindmap' | 'audio' | 'notes'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'guide' | 'mindmap' | 'audio' | 'notes' | 'data'>('chat');
   const [viewData, setViewData] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [newNote, setNewNote] = useState("");
@@ -33,6 +33,32 @@ export default function Home() {
 
   const [input, setInput] = useState("");
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
+  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [relatedImages, setRelatedImages] = useState<any[]>([]);
+
+
+
+  const fetchRelatedImages = async (currentMessages: any[]) => {
+    const lastMsg = currentMessages[currentMessages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') return;
+    try {
+      const userMsg = currentMessages.slice().reverse().find((m: any) => m.role === 'user');
+      if (!userMsg) return;
+      const res = await fetch("/api/images", {
+        method: "POST",
+        body: JSON.stringify({ query: typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity" }),
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRelatedImages(data.images || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const transport = useMemo(() => new DefaultChatTransport({
     api: "/api/chat",
@@ -44,8 +70,25 @@ export default function Home() {
     onFinish: (event: any) => {
       const finalMessages = event.messages || [...messages, event.message || event];
       fetchSuggestions(finalMessages);
+      fetchRelatedImages(finalMessages);
     }
   });
+
+  // similarResources is now a useMemo hook
+  const similarResources = useMemo(() => {
+    const ids = new Set<string>();
+    messages.forEach(m => {
+      if (m.role === 'assistant') {
+        const rawText = (m as any).text || (m as any).content || m.parts?.map((p: any) => p.type === 'text' ? p.text : '').join('') || '';
+        const regex = /\[Doc: ([0-9a-fA-F-]+), Chunk: [0-9a-fA-F-]+\]/g;
+        let match;
+        while ((match = regex.exec(rawText)) !== null) {
+          ids.add(match[1]);
+        }
+      }
+    });
+    return Array.from(ids);
+  }, [messages]);
   const isLoading = status === 'submitted' || status === 'streaming';
 
   useEffect(() => {
@@ -258,10 +301,19 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen bg-white dark:bg-[#09090b] text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200">
+    <div className="flex h-screen bg-white dark:bg-[#09090b] text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200 relative overflow-hidden">
+      
+      {/* Left Sidebar Toggle Button */}
+      <button 
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        className={`absolute top-4 z-50 p-2 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-300 ${isSidebarOpen ? 'left-[335px]' : 'left-4'}`}
+      >
+        {isSidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+      </button>
+
       {/* Sidebar */}
-      <div className="w-80 bg-gray-50 dark:bg-[#121214] border-r border-gray-200 dark:border-white/5 flex flex-col transition-colors duration-200">
-        <div className="p-5 font-semibold text-lg border-b border-gray-200 dark:border-white/5 flex items-center gap-3">
+      <div className={`transition-all duration-300 ease-in-out border-r bg-gray-50 dark:bg-[#121214] border-gray-200 dark:border-white/5 flex flex-col h-full shrink-0 z-40 relative ${isSidebarOpen ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-full overflow-hidden'}`}>
+        <div className="p-5 font-semibold text-lg border-b border-gray-200 dark:border-white/5 flex items-center gap-3 shrink-0">
           <div className="bg-black dark:bg-white text-white dark:text-black p-1.5 rounded-lg shadow-sm">
             <Bot size={20} strokeWidth={2.5} />
           </div>
@@ -336,6 +388,9 @@ export default function Home() {
               </button>
               <button onClick={() => generateView('audio')} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeView === 'audio' ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                 <Headphones size={14} /> Podcast
+              </button>
+              <button onClick={() => setActiveView('data')} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeView === 'data' ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <Database size={14} /> Data
               </button>
               <button onClick={() => generateView('notes')} className={`col-span-2 p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 justify-center ${activeView === 'notes' ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                 <AlignLeft size={14} /> Notes & Highlights
@@ -473,7 +528,12 @@ export default function Home() {
                   </div>
                 ) : activeView === 'mindmap' ? (
                   <div className="relative w-full h-[650px] border border-gray-200 dark:border-white/5 rounded-2xl overflow-hidden bg-gray-50 dark:bg-[#1e1e20]">
-                    <MindMapRenderer data={viewData} />
+                    <MindMapRenderer 
+                      data={viewData} 
+                      onNodeClick={(text) => {
+                        setInput(`Can you explain this part of the mindmap: "${text}"?`);
+                      }}
+                    />
                   </div>
                 ) : activeView === 'guide' ? (
                   <div className="space-y-6">
@@ -533,6 +593,42 @@ export default function Home() {
                           <div className="col-span-full text-center py-10 text-gray-500 font-medium">No topics generated. Add more sources or check your role.</div>
                         )}
                       </div>
+                    )}
+                  </div>
+                ) : activeView === 'data' ? (
+                  <div className="space-y-4">
+                    {docs.length === 0 ? (
+                      <div className="text-gray-500 text-center py-10 font-medium">No sources linked to this workspace. Upload some first!</div>
+                    ) : (
+                      docs.map(doc => (
+                        <div key={doc.id} className="p-5 border border-gray-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#1e1e20] shadow-sm flex flex-col gap-3">
+                          <div className="flex justify-between items-start">
+                            <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              <FileText size={16} className="text-gray-400" />
+                              {doc.title}
+                            </h4>
+                            <span className="text-xs text-gray-400 font-mono">{new Date(doc.created_at).toLocaleDateString()}</span>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-2">
+                            {doc.allowed_roles?.map((r: string) => (
+                              <span key={r} className="bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md text-xs font-medium">
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+
+                          <a 
+                            href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${activeNotebookId}/${doc.id}`}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline mt-2 w-fit"
+                          >
+                            <LinkIcon size={14} />
+                            View Raw File
+                          </a>
+                        </div>
+                      ))
                     )}
                   </div>
                 ) : (
@@ -678,6 +774,63 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Right Sidebar Toggle Button */}
+      <button 
+        onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+        className={`absolute top-4 z-50 p-2 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all duration-300 ${isRightSidebarOpen ? 'right-[335px]' : 'right-4'}`}
+      >
+        {isRightSidebarOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
+      </button>
+
+      {/* Right Sidebar */}
+      <div className={`transition-all duration-300 ease-in-out border-l bg-gray-50 dark:bg-[#121214] border-gray-200 dark:border-white/5 flex flex-col h-full shrink-0 relative z-40 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] ${isRightSidebarOpen ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-full overflow-hidden border-l-0'}`}>
+        
+        {/* Top Half: Similar Resources */}
+        <div className="flex-1 overflow-y-auto p-5 border-b border-gray-200 dark:border-white/5 flex flex-col">
+          <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <LinkIcon size={14} /> Similar Resources
+          </h3>
+          <div className="space-y-3 flex-1">
+            {similarResources.length === 0 ? (
+               <div className="text-sm text-gray-400 italic">No resources identified yet. Ask a question!</div>
+            ) : (
+              similarResources.map((docId, idx) => {
+                const doc = allDocs.find(d => d.id === docId);
+                return (
+                  <div key={idx} className="p-3 rounded-xl bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="font-semibold text-sm text-gray-900 dark:text-white truncate" title={doc?.title || 'Unknown Document'}>
+                      {doc?.title || 'Unknown Document'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1 truncate">ID: {docId.substring(0,8)}...</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Half: Related Images (Manga Grid) */}
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col bg-white/50 dark:bg-[#0a0a0c]">
+          <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+            <ImageIcon size={14} /> Related Images
+          </h3>
+          <div className="grid grid-cols-2 gap-2 auto-rows-max">
+            {relatedImages.length === 0 ? (
+               <div className="text-sm text-gray-400 italic col-span-2">No related images found.</div>
+            ) : (
+              relatedImages.map((img, idx) => (
+                <a href={img.source} target="_blank" rel="noreferrer" key={idx} className="relative aspect-square overflow-hidden rounded-lg bg-gray-200 dark:bg-white/10 border border-gray-200 dark:border-white/5 shadow-sm group block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img.thumbnail} alt={img.title || "Related image"} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                </a>
+              ))
+            )}
+          </div>
+        </div>
+
+      </div>
+
     </div>
   );
 }
