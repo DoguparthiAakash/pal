@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { search, searchImages, SafeSearchType } from 'duck-duck-scrape';
 
 export async function POST(req: Request) {
   try {
@@ -9,12 +8,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    // Try an image search
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY || 'A3_ueUcjaJVRWxYl5544am-1ffzXg6qMhk7Il9rqo60';
+    
     let results;
     try {
-      results = await searchImages(query, { safeSearch: SafeSearchType.OFF as any });
+      const response = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=8`, {
+        headers: {
+          'Authorization': `Client-ID ${accessKey}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Unsplash API error: ${response.statusText}`);
+      }
+      
+      results = await response.json();
     } catch (err: any) {
-      console.warn("DuckDuckGo image search failed, falling back to empty results:", err.message);
+      console.warn("Unsplash image search failed, falling back to empty results:", err.message);
       return NextResponse.json({ images: [] });
     }
     
@@ -22,11 +32,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ images: [] });
     }
     
-    const images = results.results.slice(0, 8).map(r => ({
-      url: r.image,
-      thumbnail: r.thumbnail,
-      title: r.title,
-      source: r.source
+    const images = results.results.map((r: any) => ({
+      url: r.urls.regular,
+      thumbnail: r.urls.thumb,
+      title: r.alt_description || "Image",
+      source: r.links.html
     }));
 
     return NextResponse.json({ images });
