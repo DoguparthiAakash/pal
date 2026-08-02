@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import { generateText } from 'ai';
+import { groq } from '@ai-sdk/groq';
 
 export async function POST(req: Request) {
   try {
-    const { query } = await req.json();
+    const { query, context } = await req.json();
 
     if (!query) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
@@ -15,9 +17,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ images: [] });
     }
     
+    let searchKeyword = query;
+    if (context && process.env.GROQ_API_KEY) {
+      try {
+        const result = await generateText({
+          model: groq('llama-3.3-70b-versatile'),
+          system: 'You are an expert at extracting highly visual search terms for stock photo databases (Unsplash). Given the user query and the AI response context, output exactly 1 to 3 words (separated by spaces, no punctuation, no quotes) that best represent the core visual subject. Examples: "matrix code", "server rack", "cpu processor", "business meeting".',
+          prompt: `Query: ${query}\nContext: ${context.substring(0, 500)}`
+        });
+        searchKeyword = result.text.trim().replace(/[^a-zA-Z0-9 ]/g, '');
+      } catch (e) {
+        console.warn("Failed to generate optimized search keyword:", e);
+      }
+    }
+    
     let results;
     try {
-      const response = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=8`, {
+      const response = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchKeyword)}&per_page=8`, {
         headers: {
           'Authorization': `Client-ID ${accessKey}`
         }

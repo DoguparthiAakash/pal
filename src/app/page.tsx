@@ -48,7 +48,10 @@ export default function Home() {
       if (!userMsg) return;
       const res = await fetch("/api/images", {
         method: "POST",
-        body: JSON.stringify({ query: typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity" }),
+        body: JSON.stringify({ 
+          query: typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity",
+          context: typeof lastMsg.content === 'string' ? lastMsg.content : ""
+        }),
         headers: { "Content-Type": "application/json" }
       });
       if (res.ok) {
