@@ -2,14 +2,17 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { openai } from '@ai-sdk/openai';
 import { embedMany } from 'ai';
-import pdfParse from 'pdf-parse';
+if (typeof global !== 'undefined' && !(global as any).DOMMatrix) {
+  (global as any).DOMMatrix = class {};
+}
+const pdfParse = require('pdf-parse');
 import mammoth from 'mammoth';
 
 // A simple recursive chunker by words
 function chunkText(text: string, maxTokens: number = 400): string[] {
   const words = text.split(/\s+/);
-  const chunks = [];
-  let currentChunk = [];
+  const chunks: string[] = [];
+  let currentChunk: string[] = [];
   let currentLength = 0;
   
   for (const word of words) {
@@ -58,6 +61,9 @@ export async function POST(req: Request) {
       // assume text/markdown
       text = buffer.toString('utf-8');
     }
+    
+    // PostgreSQL does not support null bytes (\u0000) in text fields
+    text = text.replace(/\0/g, '');
     
     if (!text.trim()) {
       return NextResponse.json({ error: 'No text extracted' }, { status: 400 });

@@ -87,9 +87,63 @@ async function runEval() {
     else failed++;
   }
 
-  console.log(`\nEval Complete: ${passed}/${TEST_CASES.length} passed.`);
+  console.log(`\nBase Eval Complete: ${passed}/${TEST_CASES.length} passed.`);
 
-  // 3. Cleanup
+  // 3. Test Notebook Layer
+  console.log('\n--- Starting Notebook Layer Eval ---');
+  const { data: testNotebook } = await supabase.from('notebooks').insert({ title: 'Test Notebook' }).select().single();
+  
+  // Link only public and hr docs to this notebook
+  await supabase.from('notebook_documents').insert([
+    { notebook_id: testNotebook.id, document_id: docPublic.id },
+    { notebook_id: testNotebook.id, document_id: docHR.id }
+  ]);
+
+  const NOTEBOOK_TEST_CASES = [
+    { as_role: 'hr', query: 'Show me the HR salary doc', expected: 'should_answer', expected_doc_type: 'hr' },
+    { as_role: 'intern', query: 'Show me the HR salary doc', expected: 'no_leak', forbidden_doc_type: 'hr' },
+    { as_role: 'hr', query: 'What are the engineering architecture decisions?', expected: 'no_leak', forbidden_doc_type: 'engineering' } // Should not leak even if HR, because Eng doc is NOT in this notebook
+  ];
+
+  let nbPassed = 0;
+  let nbFailed = 0;
+
+  for (const t of NOTEBOOK_TEST_CASES) {
+    const { data: chunks, error } = await supabase.rpc('match_chunks_in_notebook', {
+      query_embedding: MOCK_EMBEDDING,
+      match_count: 6,
+      user_role: t.as_role,
+      user_id: null,
+      p_notebook_id: testNotebook.id
+    });
+
+    if (error) {
+      console.error('Error querying notebook chunks:', error);
+      nbFailed++;
+      continue;
+    }
+
+    const returnedDocIds = (chunks || []).map((c: any) => c.document_id);
+    
+    let pass = false;
+    if (t.expected === 'no_leak') {
+      const forbiddenId = typeToDocId[t.forbidden_doc_type!];
+      pass = !returnedDocIds.includes(forbiddenId);
+    } else if (t.expected === 'should_answer') {
+      const expectedId = typeToDocId[t.expected_doc_type!];
+      pass = returnedDocIds.includes(expectedId);
+    }
+
+    console.log(`[${pass ? 'PASS' : 'FAIL'}] NB Role: ${t.as_role.padEnd(11)} | Query: ${t.query}`);
+    if (pass) nbPassed++;
+    else nbFailed++;
+  }
+  
+  console.log(`\nNotebook Eval Complete: ${nbPassed}/${NOTEBOOK_TEST_CASES.length} passed.`);
+
+  // 4. Cleanup
+  await supabase.from('notebook_documents').delete().neq('notebook_id', '00000000-0000-0000-0000-000000000000');
+  await supabase.from('notebooks').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   await supabase.from('chunks').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   await supabase.from('documents').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   await supabase.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000');

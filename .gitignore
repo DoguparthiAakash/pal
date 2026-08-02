@@ -30,10 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files and secrets
 .env*
-
-# vercel
+.env.local
+docker.env
+supabase/.temp/
+supabase/.branches/
 .vercel
 
 # typescript

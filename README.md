@@ -1,4 +1,4 @@
-# Secure RAG Enterprise Assistant
+# Pal
 
 **Live URL**: [Pending Vercel Deployment — Requires User Tokens]  
 *Note: Due to lack of deployment tokens in the environment, you must deploy this using `npx vercel` or push to a GitHub repo linked to Vercel.*
@@ -28,7 +28,7 @@ The retrieval filter enforces strict RLS-like logic at the query level `(user_ro
 - **Backend API**: Next.js Serverless Routes
 - **Database**: Supabase PostgreSQL with `pgvector` extension
 - **Embeddings**: OpenAI `text-embedding-3-small` (mocked securely if `OPENAI_API_KEY` is missing)
-- **LLM**: OpenAI `gpt-4o-mini` (streamed)
+- **LLM**: Groq `llama-3.3-70b-versatile` (for complex reasoning and generation) and `llama-3.1-8b-instant` (for fast metadata extraction)
 
 ## Critical Implementation Details
 - **Role Denormalization**: We denormalize `allowed_roles` onto the `chunks` table. This allows us to perform the access control check *in the same query* as the vector similarity search, completely eliminating the "second pass" vulnerability where an LLM could guess or infer hidden documents.
@@ -46,6 +46,7 @@ The retrieval filter enforces strict RLS-like logic at the query level `(user_ro
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
    OPENAI_API_KEY=your_openai_api_key
+   GROQ_API_KEY=your_groq_api_key
    ```
 3. **Run Locally**:
    ```bash
