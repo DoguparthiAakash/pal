@@ -36,17 +36,28 @@ export default function Home() {
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
-  const [relatedImages, setRelatedImages] = useState<any[]>([]);
+  const [searchTopics, setSearchTopics] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
+  const scrollToMessage = (msgId: string) => {
+    const el = document.getElementById(`msg-${msgId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('bg-gray-100', 'dark:bg-white/5', 'rounded-xl');
+      setTimeout(() => {
+        el.classList.remove('bg-gray-100', 'dark:bg-white/5', 'rounded-xl');
+      }, 1500);
+    }
+  };
 
-
-  const fetchRelatedImages = async (currentMessages: any[]) => {
+  const fetchRelatedTopics = async (currentMessages: any[]) => {
     const lastMsg = currentMessages[currentMessages.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') return;
     try {
       const userMsg = currentMessages.slice().reverse().find((m: any) => m.role === 'user');
       if (!userMsg) return;
-      const res = await fetch("/api/images", {
+      setIsSearching(true);
+      const res = await fetch("/api/search", {
         method: "POST",
         body: JSON.stringify({ 
           query: typeof userMsg.content === 'string' ? userMsg.content : "cybersecurity",
@@ -56,10 +67,12 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
-        setRelatedImages(data.images || []);
+        setSearchTopics(data.topics || []);
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -68,12 +81,12 @@ export default function Home() {
     body: { userRole: role, notebookId: activeNotebookId }
   }), [role, activeNotebookId]);
 
-  const { messages, status, sendMessage, setMessages } = useChat({
+  const { messages, status, sendMessage, setMessages, error } = useChat({
     transport,
     onFinish: (event: any) => {
       const finalMessages = event.messages || [...messages, event.message || event];
       fetchSuggestions(finalMessages);
-      fetchRelatedImages(finalMessages);
+      fetchRelatedTopics(finalMessages);
     }
   });
 
@@ -643,15 +656,15 @@ export default function Home() {
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-6 max-w-xl mx-auto text-center">
-              <div className="w-20 h-20 bg-gray-50 dark:bg-[#1e1e20] rounded-2xl flex items-center justify-center shadow-sm border border-gray-200 dark:border-white/5 rotate-3 hover:rotate-0 transition-transform duration-300">
-                <Search size={36} className="text-gray-900 dark:text-white" />
+              <div className="w-16 h-16 bg-transparent flex items-center justify-center">
+                <Search size={40} className="text-gray-300 dark:text-gray-600" />
               </div>
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Ask anything</h2>
-              <p className="text-gray-500 dark:text-gray-400 text-lg">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">How can I help you today?</h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
                 I can summarize documents, answer questions, or help you brainstorm based on the sources in this workspace.
               </p>
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-sm text-gray-600 dark:text-gray-400">
-                <span className="w-2 h-2 rounded-full bg-green-500"></span> Context aware • Logged in as <span className="font-semibold text-gray-900 dark:text-white">{role}</span>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-xs text-gray-500 dark:text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Workspace active • Role: <span className="font-semibold text-gray-900 dark:text-white">{role}</span>
               </div>
             </div>
           ) : (
@@ -661,15 +674,10 @@ export default function Home() {
                 const parsedText = rawText.replace(/\[Doc: ([0-9a-fA-F-]+), Chunk: ([0-9a-fA-F-]+)\]/g, '`citation:$1:$2`');
 
                 return (
-                  <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    {m.role !== 'user' && (
-                      <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 flex items-center justify-center flex-shrink-0 text-gray-900 dark:text-white shadow-sm mt-1">
-                        <Bot size={20} />
-                      </div>
-                    )}
-                    <div className={`p-5 rounded-2xl shadow-sm whitespace-pre-wrap leading-relaxed text-[15px] ${m.role === 'user' ? 'bg-black text-white dark:bg-white dark:text-black ml-12 rounded-tr-sm' : 'bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 text-gray-800 dark:text-gray-200 mr-12 rounded-tl-sm'}`}>
+                  <div key={m.id} id={`msg-${m.id}`} className={`flex w-full transition-colors duration-500 p-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] whitespace-pre-wrap leading-relaxed text-[15px] ${m.role === 'user' ? 'bg-gray-100 dark:bg-[#1e1e20] text-gray-900 dark:text-white px-6 py-4 rounded-3xl rounded-tr-sm' : 'bg-transparent text-gray-800 dark:text-gray-200 py-2'}`}>
                       {m.role === 'user' ? rawText : (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:my-4">
                           <ReactMarkdown
                             components={{
                               code: ({node, inline, className, children, ...props}: any) => {
@@ -677,10 +685,10 @@ export default function Home() {
                                 if (inline && match) {
                                   return (
                                     <span 
-                                      className="inline-flex items-center justify-center bg-gray-100 dark:bg-white/10 text-gray-900 dark:text-white text-xs font-semibold px-2 py-0.5 rounded cursor-help ml-1 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors border border-gray-200 dark:border-white/10" 
+                                      className="inline-flex items-center justify-center bg-gray-100 dark:bg-white/10 text-gray-900 dark:text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full cursor-help ml-1 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors border border-gray-200 dark:border-white/10 align-super" 
                                       title={`Doc: ${match[1]}\nChunk: ${match[2]}`}
                                     >
-                                      [{match[1].substring(0,4)}]
+                                      {match[1].substring(0,2)}
                                     </span>
                                   );
                                 }
@@ -691,12 +699,12 @@ export default function Home() {
                                     style={vscDarkPlus}
                                     language={langMatch[1]}
                                     PreTag="div"
-                                    className="rounded-lg text-sm my-4"
+                                    className="rounded-xl text-[13px] my-4 shadow-sm border border-gray-200 dark:border-white/5"
                                   >
                                     {String(children).replace(/\n$/, '')}
                                   </SyntaxHighlighter>
                                 ) : (
-                                  <code className={className} {...props}>{children}</code>
+                                  <code className={`${className} bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded-md text-[13px]`} {...props}>{children}</code>
                                 );
                               }
                             }}
@@ -706,23 +714,15 @@ export default function Home() {
                         </div>
                       )}
                     </div>
-                    {m.role === 'user' && (
-                      <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 flex items-center justify-center flex-shrink-0 text-gray-900 dark:text-white shadow-sm mt-1">
-                        <User size={20} />
-                      </div>
-                    )}
                   </div>
                 );
               })}
               {isLoading && (
-                <div className="flex gap-4 justify-start fade-in">
-                  <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 flex items-center justify-center flex-shrink-0 text-gray-900 dark:text-white shadow-sm mt-1">
-                    <Bot size={20} />
-                  </div>
-                  <div className="p-5 rounded-2xl bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 text-gray-500 dark:text-gray-400 rounded-tl-sm text-[15px] shadow-sm flex items-center gap-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                <div className="flex w-full justify-start p-2 fade-in">
+                  <div className="py-2 text-gray-500 dark:text-gray-400 text-[15px] flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></div>
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
                   </div>
                 </div>
               )}
@@ -757,7 +757,7 @@ export default function Home() {
               setInput('');
             }} className="relative shadow-lg rounded-2xl group">
               <input
-                className="w-full p-4 pl-5 pr-14 rounded-2xl border border-gray-300 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent bg-white dark:bg-[#1e1e20] text-gray-900 dark:text-white disabled:bg-gray-50 dark:disabled:bg-[#121214] disabled:text-gray-400 shadow-sm transition-shadow text-[15px]"
+                className="w-full p-4 pl-5 pr-14 rounded-full border border-gray-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent bg-gray-50 dark:bg-[#1e1e20] text-gray-900 dark:text-white disabled:bg-gray-100 dark:disabled:bg-[#121214] disabled:text-gray-400 shadow-sm transition-shadow text-[15px]"
                 value={input}
                 disabled={!activeNotebookId}
                 placeholder={activeNotebookId ? `Ask a question as ${role === 'ai' ? 'AI' : role}...` : "Select a workspace to start"}
@@ -766,9 +766,9 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoading || !input.trim() || !activeNotebookId}
-                className="absolute right-2 top-2 bottom-2 w-10 bg-black dark:bg-white text-white dark:text-black rounded-xl hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-black dark:disabled:hover:bg-white transition-all flex items-center justify-center shadow-sm"
+                className="absolute right-2 top-2 bottom-2 w-10 bg-black dark:bg-white text-white dark:text-black rounded-full hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-black dark:disabled:hover:bg-white transition-all flex items-center justify-center shadow-sm"
               >
-                <Send size={18} className={input.trim() && activeNotebookId ? 'translate-x-0.5' : ''} />
+                <Send size={16} className={input.trim() && activeNotebookId ? 'translate-x-0.5' : ''} />
               </button>
             </form>
             <div className="text-center mt-3 text-xs font-medium text-gray-400 dark:text-gray-500 tracking-wide">
@@ -789,48 +789,61 @@ export default function Home() {
       {/* Right Sidebar */}
       <div className={`transition-all duration-300 ease-in-out border-l bg-gray-50 dark:bg-[#121214] border-gray-200 dark:border-white/5 flex flex-col h-full shrink-0 relative z-40 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[-4px_0_24px_rgba(0,0,0,0.2)] ${isRightSidebarOpen ? 'w-80 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-full overflow-hidden border-l-0'}`}>
         
-        {/* Top Half: Similar Resources */}
-        <div className="flex-1 overflow-y-auto p-5 border-b border-gray-200 dark:border-white/5 flex flex-col">
+        {/* Top Half: Related Web Topics */}
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col">
           <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider flex items-center gap-2">
-            <LinkIcon size={14} /> Similar Resources
+            <Search size={14} /> Related Web Topics
           </h3>
-          <div className="space-y-3 flex-1">
-            {similarResources.length === 0 ? (
-               <div className="text-sm text-gray-400 italic">No resources identified yet. Ask a question!</div>
+          <div className="flex flex-col gap-2">
+            {isSearching ? (
+              <div className="text-sm text-gray-500 flex items-center gap-2">
+                <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                Searching web...
+              </div>
+            ) : searchTopics.length > 0 ? (
+              searchTopics.map((topic, i) => (
+                <div key={i} className="text-sm p-3 bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-200 dark:border-white/5 shadow-sm text-gray-800 dark:text-gray-200">
+                  <div className="font-medium mb-1">{topic.query}</div>
+                  <div className="text-xs text-gray-500">{topic.snippet}</div>
+                  {topic.url && (
+                    <a href={topic.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline text-xs mt-2 inline-block">
+                      Read more &rarr;
+                    </a>
+                  )}
+                </div>
+              ))
             ) : (
-              similarResources.map((docId, idx) => {
-                const doc = allDocs.find(d => d.id === docId);
-                return (
-                  <div key={idx} className="p-3 rounded-xl bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="font-semibold text-sm text-gray-900 dark:text-white truncate" title={doc?.title || 'Unknown Document'}>
-                      {doc?.title || 'Unknown Document'}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1 truncate">ID: {docId.substring(0,8)}...</div>
-                  </div>
-                );
-              })
+              <div className="text-sm text-gray-400 dark:text-gray-500 p-4 border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-center">
+                Ask a question to see related web topics inline.
+              </div>
             )}
           </div>
         </div>
 
-        {/* Bottom Half: Related Images (Manga Grid) */}
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col bg-white/50 dark:bg-[#0a0a0c]">
+        {/* Bottom Half: Chat History / Quick Go */}
+        <div className="flex-1 overflow-y-auto p-5 border-t border-gray-200 dark:border-white/5 flex flex-col">
           <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider flex items-center gap-2">
-            <ImageIcon size={14} /> Related Images
+            <MessageSquare size={14} /> Quick Go
           </h3>
-          <div className="grid grid-cols-2 gap-2 auto-rows-max">
-            {relatedImages.length === 0 ? (
-               <div className="text-sm text-gray-400 italic col-span-2">No related images found.</div>
+          <div className="flex flex-col gap-1">
+            {messages.filter(m => m.role === 'user').length === 0 ? (
+              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No questions yet in this session.</div>
             ) : (
-              relatedImages.map((img, idx) => (
-                <a href={img.source} target="_blank" rel="noreferrer" key={idx} className="relative aspect-square overflow-hidden rounded-lg bg-gray-200 dark:bg-white/10 border border-gray-200 dark:border-white/5 shadow-sm group block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.thumbnail} alt={img.title || "Related image"} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                </a>
+              messages.filter(m => m.role === 'user').map(m => (
+                <button 
+                  key={m.id}
+                  onClick={() => scrollToMessage(m.id)}
+                  className="text-left text-sm truncate px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                  title={m.parts?.map(p => p.type === 'text' ? p.text : '').join('') || ''}
+                >
+                  {m.parts?.map(p => p.type === 'text' ? p.text : '').join('') || ''}
+                </button>
               ))
             )}
           </div>
         </div>
+
+      </div>
 
       </div>
 
