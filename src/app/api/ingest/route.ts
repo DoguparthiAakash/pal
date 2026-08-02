@@ -81,6 +81,18 @@ export async function POST(req: Request) {
       
     if (docError) throw docError;
 
+    // Upload the file to Supabase Storage so it can be viewed later
+    const { error: storageError } = await supabase.storage
+      .from('documents')
+      .upload(`${doc.id}`, buffer, {
+        contentType: file.type || 'application/pdf',
+        upsert: true
+      });
+      
+    if (storageError) {
+      console.warn('Failed to upload file to storage, but text was extracted:', storageError);
+    }
+
     const chunks = chunkText(text);
     
     let embeddings: number[][] = [];

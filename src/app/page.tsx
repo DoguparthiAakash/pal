@@ -680,7 +680,7 @@ export default function Home() {
                           <button
                             onClick={() => {
                               setViewingDocument({
-                                url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${activeNotebookId}/${doc.id}`,
+                                url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${doc.id}`,
                                 title: doc.title
                               });
                             }}
