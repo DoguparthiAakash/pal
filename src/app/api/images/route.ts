@@ -8,7 +8,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    const accessKey = process.env.UNSPLASH_ACCESS_KEY || 'A3_ueUcjaJVRWxYl5544am-1ffzXg6qMhk7Il9rqo60';
+    const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+    
+    if (!accessKey) {
+      console.warn("Missing UNSPLASH_ACCESS_KEY");
+      return NextResponse.json({ images: [] });
+    }
     
     let results;
     try {
