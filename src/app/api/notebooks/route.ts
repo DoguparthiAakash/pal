@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const supabase = await createServerClient();
-    const { data, error } = await supabase.from('notebooks').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('knowledge_bases').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return NextResponse.json(data);
   } catch (err: any) {
@@ -26,9 +26,9 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
-    const { data, error } = await supabase.from('notebooks').insert({ 
+    const { data, error } = await supabase.from('knowledge_bases').insert({ 
       title,
-      owner_id: user.id 
+      user_id: user.id 
     }).select().single();
     if (error) throw error;
     
