@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-import { adminClient as supabase } from '@/infrastructure/auth/admin';
+import { createServerClient } from '@/infrastructure/auth/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const supabase = await createServerClient();
     
-    // We should probably filter by user, but since we don't have auth, we return all notes for the notebook
     const { data, error } = await supabase
       .from('notes')
       .select('*')
@@ -25,19 +25,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { chunk_id, content, userRole } = await req.json();
+    const { chunk_id, content } = await req.json();
     
-    if (!content || !userRole) {
-      return NextResponse.json({ error: 'Missing content or userRole' }, { status: 400 });
+    if (!content) {
+      return NextResponse.json({ error: 'Missing content' }, { status: 400 });
     }
+    
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
     const { data, error } = await supabase
       .from('notes')
       .insert({
         notebook_id: id,
-        chunk_id: chunk_id || null, // Optional if it's a general note
-        content,
-        created_by_role: userRole
+        user_id: user.id,
+        content
       })
       .select();
       

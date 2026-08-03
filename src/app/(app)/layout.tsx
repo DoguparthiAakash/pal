@@ -11,6 +11,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [docs, setDocs] = useState<any[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const pathname = usePathname();
 
   // Extract active notebook ID from URL e.g. /notebooks/123/chat
@@ -28,6 +29,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       .then(res => res.json())
       .then(data => setNotebooks(data))
       .catch(console.error);
+
+    const supabase = createBrowserClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
   }, []);
 
   useEffect(() => {
@@ -44,29 +50,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     setUploading(true);
     
     try {
-      const docId = crypto.randomUUID();
-      const supabase = createBrowserClient();
-      
-      const { error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(docId, file, { contentType: file.type || 'application/pdf', upsert: true });
-
-      if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
+      const formData = new FormData();
+      formData.append('file', file);
 
       const res = await fetch("/api/ingest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docId, fileName: file.name, allowedRoles: 'ai,intern,hr,engineering,exec,developer,designer,marketer,data_scientist' })
+        body: formData
       });
 
       if (res.ok) {
         const result = await res.json();
         await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
           method: "POST",
-          body: JSON.stringify({ document_id: result.docId }),
+          body: JSON.stringify({ document_id: result.document_id }),
           headers: { "Content-Type": "application/json" }
         });
         fetchDocs();
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Upload failed');
       }
     } catch (err: any) {
       alert("Upload failed: " + err.message);
@@ -168,6 +170,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         )}
+        
+        {/* User Profile */}
+        <div className="p-5 border-t border-gray-200 dark:border-white/5 mt-auto">
+          {user ? (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-semibold text-sm shrink-0">
+                {user.email?.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.email}</p>
+                <form action="/auth/signout" method="POST">
+                  <button type="submit" className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">Sign out</button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <Link href="/login" className="text-sm text-gray-600 hover:text-black dark:text-gray-400 dark:hover:text-white transition-colors">Sign In</Link>
+          )}
+        </div>
       </div>
 
       {/* Main Content Area */}

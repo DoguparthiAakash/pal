@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { adminClient as supabase } from '@/infrastructure/auth/admin';
+import { createServerClient } from '@/infrastructure/auth/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const supabase = await createServerClient();
     
     // Get all documents in this notebook
     const { data: nds, error: ndError } = await supabase
@@ -37,6 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const { document_id } = await req.json();
+    const supabase = await createServerClient();
     
     if (!document_id) return NextResponse.json({ error: 'document_id is required' }, { status: 400 });
     

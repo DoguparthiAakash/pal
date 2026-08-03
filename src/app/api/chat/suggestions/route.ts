@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminClient as supabase } from '@/infrastructure/auth/admin';
+import { createServerClient } from '@/infrastructure/auth/server';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, embed } from 'ai';
@@ -7,10 +7,14 @@ import { config } from '@/config';
 
 export async function POST(req: Request) {
   try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { messages, userRole, notebookId } = await req.json();
     
-    if (!messages || !userRole || !notebookId) {
-      return NextResponse.json({ error: 'Missing messages, userRole, or notebookId' }, { status: 400 });
+    if (!messages || !notebookId) {
+      return NextResponse.json({ error: 'Missing messages or notebookId' }, { status: 400 });
     }
     
     // Normalize messages from UI format (parts) to CoreMessage format (content)
@@ -31,8 +35,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabase.rpc('match_chunks_in_notebook', {
         query_embedding: embedding,
         match_count: 5,
-        user_role: userRole,
-        user_id: null,
+        p_user_id: user.id,
         p_notebook_id: notebookId
       });
       if (error) throw error;
@@ -54,7 +57,6 @@ export async function POST(req: Request) {
           .from('chunks')
           .select('id, document_id, content')
           .in('document_id', docIds)
-          .contains('allowed_roles', [userRole])
           .limit(10);
           
         if (fcError) throw fcError;
@@ -105,3 +107,4 @@ ${contextText}
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { adminClient as supabase } from '@/infrastructure/auth/admin';
+import { createServerClient } from '@/infrastructure/auth/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const supabase = await createServerClient();
     const { data: docs, error } = await supabase
       .from('documents')
       .select('*')
@@ -17,3 +18,4 @@ export async function GET() {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

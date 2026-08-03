@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminClient as supabase } from '@/infrastructure/auth/admin';
+import { createServerClient } from '@/infrastructure/auth/server';
 import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { config } from '@/config';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const supabase = await createServerClient();
     const { userRole, offset = 0 } = await req.json();
     
     if (!userRole) {
