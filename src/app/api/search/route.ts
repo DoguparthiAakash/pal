@@ -1,74 +1,45 @@
-import { NextResponse } from 'next/server';
-import { generateText } from 'ai';
-import { groq } from '@ai-sdk/groq';
+import { NextRequest, NextResponse } from 'next/server';
+import { AuthService } from '@/application/services/AuthService';
+import { RetrievalService } from '@/application/services/RetrievalService';
+import { ObservabilityService } from '@/application/services/ObservabilityService';
+import { MockEmbeddingProvider } from '@/infrastructure/embeddings/MockEmbeddingProvider';
+import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
 
-export async function POST(req: Request) {
+const observer = new ObservabilityService();
+const authService = new AuthService();
+
+const retrievalService = new RetrievalService(
+  new SupabaseVectorStore(),
+  new MockEmbeddingProvider(),
+  observer
+);
+
+export async function POST(req: NextRequest) {
   try {
-    const { query, context, messages } = await req.json();
-    let searchQuery = query;
-
-    // Use Groq to determine the best search query based on the conversation context
-    if (process.env.GROQ_API_KEY) {
-      try {
-        let promptText = "";
-        if (messages && messages.length > 0) {
-          const conversation = messages.map((m: any) => `${m.role.toUpperCase()}: ${m.content.substring(0, 500)}`).join('\n');
-          promptText = `Conversation:\n${conversation}\n\nWhat is the most relevant 2-5 word search query to find more info on the web about the user's latest topic?`;
-        } else if (context) {
-          promptText = `User asked: ${query}\nAssistant replied: ${context.substring(0, 500)}\n\nWhat is the most relevant 2-5 word search query to find more info on the web?`;
-        }
-
-        if (promptText) {
-          const result = await generateText({
-            model: groq('llama-3.1-8b-instant'),
-            system: 'You are an AI assistant that extracts the single most relevant search query based on a conversation. Return ONLY the search query text, no quotes or explanation. The query should be optimized for a search engine.',
-            prompt: promptText
-          });
-          if (result.text) {
-            searchQuery = result.text.trim().replace(/['"]/g, '');
-          }
-        }
-      } catch (e) {
-        console.error('Groq query generation failed:', e);
-      }
+    // 1. Auth check
+    const user = await authService.getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!process.env.TAVILY_API_KEY) {
-      return NextResponse.json({ 
-        topics: [
-          { query: "Search API Key Missing", snippet: "Please add TAVILY_API_KEY to your environment variables to enable live web searches.", url: "https://tavily.com" }
-        ]
-      });
+    // 2. Parse request
+    const { query } = await req.json();
+    if (!query) {
+      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    // Call Tavily API for Search results
-    const response = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        api_key: process.env.TAVILY_API_KEY,
-        query: searchQuery,
-        search_depth: "basic",
-        max_results: 4
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Tavily API error: ${response.statusText}`);
+    // 3. Get KB
+    const kb = await authService.getDefaultKnowledgeBase(user.id);
+    if (!kb) {
+      return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
     }
 
-    const data = await response.json();
-    const topics = (data.results || []).slice(0, 4).map((item: any) => ({
-      query: item.title,
-      snippet: item.content,
-      url: item.url
-    }));
+    // 4. Retrieve context
+    const chunks = await retrievalService.retrieveContext(query, user.id, kb);
 
-    return NextResponse.json({ topics });
-  } catch (error) {
-    console.error('Search API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch search results' }, { status: 500 });
+    return NextResponse.json({ chunks }, { status: 200 });
+  } catch (error: any) {
+    console.error('Search API Error:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

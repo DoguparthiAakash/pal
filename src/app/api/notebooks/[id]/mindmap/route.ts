@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
+import { config } from '@/config';
+import { createGroq } from '@ai-sdk/groq';
+import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -55,7 +58,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const hasMore = offset + batchSize < chunks.length;
     const nextOffset = hasMore ? offset + batchSize : null;
     
-    if (process.env.GROQ_API_KEY) {
+    let model;
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      model = createGroq({ apiKey: config.providers.llm.groqApiKey })('llama3-8b-8192');
+    } else if (config.providers.llm.provider === 'openai' && config.providers.llm.openaiApiKey) {
+      model = createOpenAI({ apiKey: config.providers.llm.openaiApiKey })('gpt-4o-mini');
+    }
+
+    if (model) {
       const isFirst = offset === 0;
       
       const systemPrompt = `You are a helpful company assistant. Based on the following workspace content, generate a structured top-down flowchart representing key topics and their relationships using Mermaid.js syntax.

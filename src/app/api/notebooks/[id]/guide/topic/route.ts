@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
+import { config } from '@/config';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,7 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     
     const contextText = chunks.slice(0, 50).map((c: any) => c.content).join('\n\n');
     
-    if (process.env.GROQ_API_KEY) {
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
       const systemPrompt = `You are a helpful study guide assistant. Based on the provided workspace documents, write a detailed explanation and deep-dive for the specific topic requested by the user.
 Use markdown headings, bullet points, and code blocks if applicable.
 

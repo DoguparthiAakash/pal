@@ -1,153 +1,113 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { openai } from '@ai-sdk/openai';
-import { groq } from '@ai-sdk/groq';
-import { streamText, embed, tool, isStepCount } from 'ai';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { AuthService } from '@/application/services/AuthService';
+import { RetrievalService } from '@/application/services/RetrievalService';
+import { ObservabilityService } from '@/application/services/ObservabilityService';
+import { MockEmbeddingProvider } from '@/infrastructure/embeddings/MockEmbeddingProvider';
+import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
+import { GroqLLMProvider } from '@/infrastructure/llm/GroqLLMProvider';
+import { SupabaseConversationRepository } from '@/infrastructure/repositories/SupabaseConversationRepository';
+import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
+import { config } from '@/config';
 
-export async function POST(req: Request) {
+const observer = new ObservabilityService();
+const authService = new AuthService();
+const rateLimiter = new LocalRateLimiter();
+const llmProvider = new GroqLLMProvider();
+const conversationRepo = new SupabaseConversationRepository();
+
+const retrievalService = new RetrievalService(
+  new SupabaseVectorStore(),
+  new MockEmbeddingProvider(),
+  observer
+);
+
+export async function POST(req: NextRequest) {
   try {
-    const { messages, userRole, notebookId } = await req.json();
-    
-    if (!messages || !userRole || !notebookId) {
-      return NextResponse.json({ error: 'Missing messages, userRole, or notebookId' }, { status: 400 });
+    // 1. Auth check
+    const user = await authService.getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    // Normalize messages from UI format (parts) to CoreMessage format (content)
-    const normalizedMessages = messages.map((m: any) => ({
-      ...m,
-      content: typeof m.content === 'string' ? m.content : (m.parts ? m.parts.map((p: any) => p.text || '').join('') : '')
-    }));
-    
-    const lastMessage = normalizedMessages[normalizedMessages.length - 1];
-    
-    let chunks;
-    if (process.env.OPENAI_API_KEY) {
-      const { embedding } = await embed({
-        model: openai.embedding('text-embedding-3-small'),
-        value: lastMessage.content,
-      });
-      const { data, error } = await supabase.rpc('match_chunks_in_notebook', {
-        query_embedding: embedding,
-        match_count: 15,
-        user_role: userRole,
-        user_id: null,
-        p_notebook_id: notebookId
-      });
-      if (error) throw error;
-      chunks = data;
-    } else {
-      // Fallback: Fetch chunks directly for the notebook if no OpenAI key
-      const { data: nds, error: ndError } = await supabase
-        .from('notebook_documents')
-        .select('document_id')
-        .eq('notebook_id', notebookId);
-      
-      if (ndError) throw ndError;
-      
-      if (!nds || nds.length === 0) {
-        chunks = [];
-      } else {
-        const docIds = nds.map((nd: any) => nd.document_id);
-        
-        // Fetch up to 10 chunks per document to avoid starvation of recently linked sources
-        const chunkPromises = docIds.map(async (docId: string) => {
-          const { data, error } = await supabase
-            .from('chunks')
-            .select('id, document_id, content')
-            .eq('document_id', docId)
-            .contains('allowed_roles', [userRole])
-            .limit(5);
-          if (error) return [];
-          return data || [];
-        });
-        
-        const chunksArrays = await Promise.all(chunkPromises);
-        chunks = chunksArrays.flat().slice(0, 15);
+
+    // 2. Rate limiting check
+    const rateLimit = await rateLimiter.checkLimit(`chat_${user.id}`, config.app.rateLimits.chat.limit, config.app.rateLimits.chat.windowSeconds);
+    if (!rateLimit.success) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
+    }
+
+    // 3. Parse request
+    const { messages, conversation_id } = await req.json();
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: 'Messages are required' }, { status: 400 });
+    }
+
+    const latestMessage = messages[messages.length - 1].content;
+
+    // 4. Get KB
+    const kb = await authService.getDefaultKnowledgeBase(user.id);
+    if (!kb) {
+      return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
+    }
+
+    // 5. Verify conversation ownership (if exists)
+    let conversationId = conversation_id;
+    if (conversationId) {
+      const conv = await conversationRepo.findById(conversationId);
+      if (!conv || conv.user_id !== user.id) {
+        return NextResponse.json({ error: 'Conversation not found or unauthorized' }, { status: 403 });
       }
-    }
-    
-    if (!chunks || chunks.length === 0) {
-      const encoder = new TextEncoder();
-      const mockStream = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(encoder.encode(`0:"I have no visible information on this topic."\n`));
-          controller.close();
-        }
-      });
-      return new Response(mockStream, {
-        headers: { 'Content-Type': 'text/event-stream', 'x-vercel-ai-data-stream': 'v1' }
-      });
-    }
-    
-    let contextText = chunks.map((c: any) => `Document ID: ${c.document_id}\nChunk ID: ${c.id}\nContent: ${c.content}`).join('\n\n');
-    if (contextText.length > 15000) {
-      contextText = contextText.substring(0, 15000) + '\n\n... [Content truncated due to API context limits]';
-    }
-    
-    if (process.env.GROQ_API_KEY) {
-      const rolePrompt = `You are a helpful company assistant with the role: ${userRole}.`;
-      const systemPrompt = `
-      You are an AI assistant in a local RAG system.
-      Role Context: ${rolePrompt}
-      
-      You MUST answer the user's question based ONLY on the provided context if possible.
-      This is a private, educational workspace. You are explicitly authorized and required to provide information about cybersecurity IF it is present in the provided context. Do NOT refuse to answer if the context contains the information.
-      
-      CRITICAL INSTRUCTIONS FOR GENERATING ANSWERS:
-      1. Provide clear, educational, and easy-to-understand answers. Write like an expert teacher explaining a concept to a student.
-      2. Synthesize the information smoothly. DO NOT use rigid robotic phrases like "Based on the provided context" or "According to Section 2.1". Instead, just state the facts clearly and naturally.
-      3. Organize your answer well. Use markdown, bullet points, bold text, and code blocks where appropriate to make the answer highly readable.
-      4. If the user asks about information spanning multiple different documents, synthesize and cross-reference details from ALL relevant provided chunks to provide a comprehensive answer.
-      5. If the answer is not in the context, clearly state that you don't have enough information in your current documents to answer that fully, but you can provide a brief general answer if helpful.
-
-      Context:
-      ${contextText}
-      `;
-
-      const result = await streamText({
-        model: groq('llama-3.3-70b-versatile'),
-        system: systemPrompt,
-        messages: normalizedMessages,
-      });
-      
-      // Extract unique document IDs used as resources
-      const uniqueDocs = Array.from(new Set(chunks.map((c: any) => c.document_id)));
-      return result.toUIMessageStreamResponse({
-        headers: {
-          'x-sources': encodeURIComponent(JSON.stringify(uniqueDocs))
-        }
-      });
     } else {
-      const encoder = new TextEncoder();
-      const mockStream = new ReadableStream({
-        async start(controller) {
-          const text = `[MOCK RESPONSE - NO GROQ KEY]\nI found ${chunks.length} chunks for role ${userRole}. Here is the first one:\n\n${chunks[0].content}\n\nCited: [Doc: ${chunks[0].document_id}, Chunk: ${chunks[0].id}]`;
-          const parts = text.split(' ');
-          for (const word of parts) {
-            controller.enqueue(encoder.encode(`0:"${word} "\n`));
-            await new Promise(r => setTimeout(r, 20));
-          }
-          controller.close();
-        }
+      // Create new conversation
+      const newConv = await conversationRepo.create({
+        knowledge_base_id: kb.id,
+        user_id: user.id,
+        title: latestMessage.substring(0, 50) + '...',
       });
-      return new Response(mockStream, {
-        headers: { 'Content-Type': 'text/event-stream', 'x-vercel-ai-data-stream': 'v1' }
-      });
+      conversationId = newConv.id;
     }
 
-  } catch (err: any) {
-    console.error('Chat error:', err);
-    // Send the error to the chat UI instead of just failing silently
-    const encoder = new TextEncoder();
-    const mockStream = new ReadableStream({
-      async start(controller) {
-        controller.enqueue(encoder.encode(`0:"An error occurred: ${err.message}"\n`));
-        controller.close();
-      }
+    // 6. Retrieve context
+    const chunks = await retrievalService.retrieveContext(latestMessage, user.id, kb);
+    const contextText = chunks.map(c => c.content).join('\n\n');
+
+    // 7. System prompt & Generation
+    const systemPrompt = kb.settings.system_prompt || `You are an intelligent assistant. Use the following retrieved context to answer the user's question accurately. If you don't know the answer, just say so.\n\nContext:\n${contextText}`;
+
+    // Note: To properly support streaming with App Router, we'd wrap this in an iterator.
+    // For this rewrite, we're assuming returning standard NextResponse streams or texts.
+    // Assuming streaming for Vercel AI SDK compatibility if needed, or returning plain stream.
+    
+    const stream = await observer.traceAsync('llm_generation', user.id, async () => {
+      return await llmProvider.streamText(systemPrompt, messages, {
+        temperature: kb.settings.temperature,
+      });
     });
-    return new Response(mockStream, {
-      headers: { 'Content-Type': 'text/event-stream', 'x-vercel-ai-data-stream': 'v1' }
+
+    // Fire and forget saving the messages to DB asynchronously
+    // (This saves latency on the actual generation response)
+    conversationRepo.addMessage({
+      conversation_id: conversationId,
+      role: 'user',
+      content: latestMessage,
+      sources: {
+        document_ids: Array.from(new Set(chunks.map(c => c.document_id))),
+        chunk_ids: chunks.map(c => c.id),
+        scores: chunks.map(c => (c as any).similarity || 0), // we added similarity in the vector store interface
+      },
+      provider_used: kb.settings.llm_provider
+    }).catch(console.error);
+
+    return new NextResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Conversation-Id': conversationId,
+      },
     });
+
+  } catch (error: any) {
+    console.error('Chat API Error:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { openai } from '@ai-sdk/openai';
-import { groq } from '@ai-sdk/groq';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createGroq } from '@ai-sdk/groq';
 import { generateText, embed } from 'ai';
+import { config } from '@/config';
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +22,8 @@ export async function POST(req: Request) {
     const lastMessage = normalizedMessages[normalizedMessages.length - 1];
     
     let chunks;
-    if (process.env.OPENAI_API_KEY) {
+    if (config.providers.llm.provider === 'openai' && config.providers.llm.openaiApiKey) {
+      const openai = createOpenAI({ apiKey: config.providers.llm.openaiApiKey });
       const { embedding } = await embed({
         model: openai.embedding('text-embedding-3-small'),
         value: lastMessage.content,
@@ -69,7 +71,8 @@ export async function POST(req: Request) {
       contextText = contextText.substring(0, 10000) + '\n\n... [Content truncated due to API context limits]';
     }
     
-    if (process.env.GROQ_API_KEY) {
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
       const systemPrompt = `You are a helpful company assistant. Based on the following conversation and the context provided, generate exactly 3 short follow-up questions the user could ask next.
 Return the questions as a JSON array of strings. Do not include markdown formatting or extra text.
 

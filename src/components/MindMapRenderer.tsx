@@ -80,9 +80,9 @@ export default function MindMapRenderer({ data, onNodeClick }: { data: any, onNo
         
         // Clean up Mermaid's rogue error SVGs that get appended to the body
         try {
-          const errorElement = document.getElementById('d' + id);
-          if (errorElement) errorElement.remove();
-          
+          // Fallback: remove any element that looks like a mermaid error
+          document.querySelectorAll('[id^="dmermaid-chart-"]').forEach(el => el.remove());
+          document.querySelectorAll('[id^="dundefined"]').forEach(el => el.remove());
           // Fallback: remove any element that looks like a mermaid error
           document.querySelectorAll('[id^="dmermaid-chart-"]').forEach(el => el.remove());
         } catch (cleanupErr) {

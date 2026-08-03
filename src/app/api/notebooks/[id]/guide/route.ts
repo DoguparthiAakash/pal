@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { groq } from '@ai-sdk/groq';
-import { generateObject, generateText } from 'ai';
+import { generateText } from 'ai';
+import { config } from '@/config';
 import { z } from 'zod';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -54,8 +55,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const hasMore = offset + batchSize < chunks.length;
     const nextOffset = hasMore ? offset + batchSize : null;
     
-    if (process.env.GROQ_API_KEY) {
-      const systemPrompt = `You are a helpful study guide generator. Based on the provided workspace document chunks, extract a list of structured topics for the user to learn from.
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const systemPrompt = `You are a helpful study guide assistant. Based on the provided workspace documents, generate a comprehensive study guide outline.st of structured topics for the user to learn from.
 Return a JSON object containing an array of 'topics'. Each topic should have a unique 'id' (short string, e.g., 'topic-1'), a concise 'title', and a 'briefDescription'. Limit to a maximum of 8 key topics.
 
 DOCUMENTS:

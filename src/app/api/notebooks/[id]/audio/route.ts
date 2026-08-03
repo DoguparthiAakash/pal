@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
+import { config } from '@/config';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,8 +39,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     
     const contextText = chunks.slice(0, 50).map((c: any) => c.content).join('\n\n');
     
-    if (process.env.GROQ_API_KEY) {
-      const systemPrompt = `You are a helpful company assistant. Based on the following notebook content, write a readable "podcast script" featuring two hosts discussing the material.
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const systemPrompt = `You are a podcast host summarizing the key points of the user's workspace documents. Write a short, engaging 2-minute podcast script highlighting the main ideas.cussing the material.
 
 Format:
 **Host 1:** ...
