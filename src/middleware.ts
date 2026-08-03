@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse
 }
 
-export const configPath = {
+export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
