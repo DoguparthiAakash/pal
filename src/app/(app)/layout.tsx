@@ -21,13 +21,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const fetchDocs = async () => {
     if (!activeNotebookId) return;
     const res = await fetch(`/api/notebooks/${activeNotebookId}/documents`);
-    if (res.ok) setDocs(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) setDocs(data);
+    }
   };
 
   useEffect(() => {
     fetch('/api/notebooks')
       .then(res => res.json())
-      .then(data => setNotebooks(data))
+      .then(data => {
+        if (Array.isArray(data)) setNotebooks(data);
+        else console.error("API returned non-array:", data);
+      })
       .catch(console.error);
 
     const supabase = createBrowserClient();
