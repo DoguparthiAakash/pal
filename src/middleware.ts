@@ -4,8 +4,17 @@ import { createMiddlewareClient } from '@/infrastructure/auth/server'
 export async function middleware(request: NextRequest) {
   const { supabase, supabaseResponse } = createMiddlewareClient(request)
 
+  console.log(`[Middleware] Path: ${request.nextUrl.pathname}`);
+  console.log(`[Middleware] Cookies:`, request.cookies.getAll().map(c => c.name));
+
   // Refresh session if expired
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error) {
+    console.error(`[Middleware] getUser error:`, error.message);
+  }
+  
+  console.log(`[Middleware] User:`, user?.id || 'null');
 
   // Protected routes check
   if (
