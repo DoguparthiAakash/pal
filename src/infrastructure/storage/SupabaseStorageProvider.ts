@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { adminClient as supabase } from '@/infrastructure/auth/admin';
 import { StorageProvider } from '@/domain/interfaces';
 import { config } from '@/config';
 
@@ -10,7 +10,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     // We use the service role key for backend operations because RLS 
     // is enforced at the database level for table access, but for 
     // the private bucket, the backend acts as a trusted orchestrator.
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.supabase = supabase;
   }
 
   async uploadFile(path: string, file: Buffer | Blob): Promise<{ path: string; url: string }> {

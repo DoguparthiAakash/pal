@@ -52,4 +52,47 @@ describe('Configuration Builder', () => {
     
     expect(() => buildConfig(env as any)).toThrow(ConfigError);
   });
+
+  it('normalizes Supabase URL by removing trailing /rest/v1 or /rest/v1/', () => {
+    const env = { 
+      VERCEL_ENV: 'production', 
+      NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co/rest/v1/',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service',
+      LLM_PROVIDER: 'groq',
+      GROQ_API_KEY: 'gsk_123'
+    };
+    
+    const config = buildConfig(env as any);
+    expect(config.supabase.url).toBe('https://test.supabase.co');
+  });
+
+  it('rejects localhost Supabase URL in production without ENABLE_LOCAL_SUPABASE flag', () => {
+    const env = { 
+      VERCEL_ENV: 'production', 
+      NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service',
+      LLM_PROVIDER: 'groq',
+      GROQ_API_KEY: 'gsk_123'
+    };
+    
+    expect(() => buildConfig(env as any)).toThrow(ConfigError);
+    expect(() => buildConfig(env as any)).toThrow(/Localhost Supabase URL is not allowed in production/);
+  });
+
+  it('allows localhost Supabase URL in development if ENABLE_LOCAL_SUPABASE is true', () => {
+    const env = { 
+      VERCEL_ENV: 'development', 
+      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service',
+      LLM_PROVIDER: 'groq',
+      GROQ_API_KEY: 'gsk_123',
+      ENABLE_LOCAL_SUPABASE: 'true'
+    };
+    
+    const config = buildConfig(env as any);
+    expect(config.supabase.url).toBe('http://127.0.0.1:54321');
+  });
 });

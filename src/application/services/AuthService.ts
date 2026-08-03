@@ -1,4 +1,4 @@
-import { createClient } from '@/infrastructure/auth/server';
+import { createServerClient } from '@/infrastructure/auth/server';
 import { User, KnowledgeBase } from '@/domain/entities';
 import { SupabaseUserRepository } from '@/infrastructure/repositories/SupabaseUserRepository';
 import { SupabaseKnowledgeBaseRepository } from '@/infrastructure/repositories/SupabaseKnowledgeBaseRepository';
@@ -13,7 +13,7 @@ export class AuthService {
   }
 
   async getCurrentUser(): Promise<User | null> {
-    const supabase = await createClient();
+    const supabase = await createServerClient();
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error || !user) {

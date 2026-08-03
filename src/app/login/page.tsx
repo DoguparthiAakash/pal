@@ -1,13 +1,9 @@
 'use client';
 
-import { createBrowserClient } from '@supabase/ssr'
-import { config } from '@/config'
+import { createBrowserClient } from '@/infrastructure/auth/client';
 
 export default function LoginPage() {
-  const supabase = createBrowserClient(
-    config.supabase.url,
-    config.supabase.anonKey
-  )
+  const supabase = createBrowserClient();
 
   const handleLogin = async (provider: 'google' | 'github') => {
     await supabase.auth.signInWithOAuth({

@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { adminClient as supabase } from '@/infrastructure/auth/admin';
 import { ConversationRepository } from '@/domain/interfaces';
 import { Conversation, Message } from '@/domain/entities';
 import { config } from '@/config';
@@ -7,7 +7,7 @@ export class SupabaseConversationRepository implements ConversationRepository {
   private supabase;
 
   constructor() {
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.supabase = supabase;
   }
 
   async findById(id: string): Promise<Conversation | null> {

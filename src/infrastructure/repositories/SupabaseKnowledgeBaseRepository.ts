@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { adminClient as supabase } from '@/infrastructure/auth/admin';
 import { KnowledgeBaseRepository } from '@/domain/interfaces';
 import { KnowledgeBase } from '@/domain/entities';
 import { config } from '@/config';
@@ -7,7 +7,7 @@ export class SupabaseKnowledgeBaseRepository implements KnowledgeBaseRepository 
   private supabase;
 
   constructor() {
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    this.supabase = supabase;
   }
 
   async findById(id: string): Promise<KnowledgeBase | null> {

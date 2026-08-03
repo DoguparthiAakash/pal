@@ -48,6 +48,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     ENABLE_PROFILING: envVars.ENABLE_PROFILING === 'true',
     ENABLE_DEBUG_LOGGING: envVars.ENABLE_DEBUG_LOGGING === 'true',
     ENABLE_PERFORMANCE_METRICS: envVars.ENABLE_PERFORMANCE_METRICS === 'true',
+    ENABLE_LOCAL_SUPABASE: envVars.ENABLE_LOCAL_SUPABASE === 'true',
   });
 
   const providersResult = ProvidersConfigSchema.safeParse({
@@ -89,14 +90,19 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     flags: flagsResult.data,
     providers: providersResult.data,
     supabase: {
-      url: providersResult.data.storage.supabaseUrl || 'http://127.0.0.1:54321',
+      url: providersResult.data.storage.supabaseUrl || (flagsResult.data.ENABLE_LOCAL_SUPABASE ? 'http://127.0.0.1:54321' : ''),
       anonKey: providersResult.data.storage.supabaseAnonKey || 'dummy',
       serviceRoleKey: providersResult.data.storage.supabaseServiceRoleKey || 'dummy',
     }
   };
 
-  // 3. Runtime overrides and strict production checks
-  if (config.runtime.isProduction) {
+  // Normalize URL
+  if (config.supabase.url) {
+    config.supabase.url = config.supabase.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+  }
+
+  // 3. Runtime overrides and strict checks
+  if (config.runtime.isProduction || config.runtime.isPreview) {
     // Force override all debug flags to false in production
     config.flags = {
       ENABLE_DEV_LOGIN: false,
@@ -107,6 +113,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
       ENABLE_PROFILING: false,
       ENABLE_DEBUG_LOGGING: false,
       ENABLE_PERFORMANCE_METRICS: false,
+      ENABLE_LOCAL_SUPABASE: false,
     };
 
     // Force override providers to production defaults if somehow configured locally
@@ -127,6 +134,20 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     if (config.providers.llm.provider === 'groq' && !config.providers.llm.groqApiKey) {
       throw new ConfigError('GROQ_API_KEY is required in production when using groq');
     }
+  }
+
+  // Validate URL restrictions
+  if (!config.flags.ENABLE_LOCAL_SUPABASE) {
+    if (config.supabase.url.includes('localhost') || config.supabase.url.includes('127.0.0.1')) {
+      throw new ConfigError('Localhost Supabase URL is not allowed in production');
+    }
+  }
+
+  // Diagnostics logging in dev
+  if (config.runtime.isDevelopment && config.flags.ENABLE_DEBUG_LOGGING) {
+    console.log(`[Config] Runtime: ${config.runtime.environment}`);
+    console.log(`[Config] Supabase: ${config.supabase.url}`);
+    console.log(`[Config] Auth Provider: ${config.providers.auth.provider}`);
   }
 
   // Preview environment overrides (similar to production but allows some flexibility)

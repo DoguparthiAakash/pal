@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { adminClient as supabase } from '@/infrastructure/auth/admin';
 import { groq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { config } from '@/config';

@@ -9,5 +9,6 @@ export const FeatureFlagsSchema = z.object({
   ENABLE_PROFILING: z.boolean().default(false),
   ENABLE_DEBUG_LOGGING: z.boolean().default(false),
   ENABLE_PERFORMANCE_METRICS: z.boolean().default(false),
+  ENABLE_LOCAL_SUPABASE: z.boolean().default(false),
 });
 export type FeatureFlags = z.infer<typeof FeatureFlagsSchema>;

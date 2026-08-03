@@ -8,7 +8,7 @@ import MindMapRenderer from "@/components/MindMapRenderer";
 import dynamic from "next/dynamic";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { supabaseClient } from '@/lib/supabaseClient';
+import { createBrowserClient } from '@/infrastructure/auth/client';
 
 const DocumentViewer = dynamic(() => import('@/components/DocumentViewer'), { 
   ssr: false,
@@ -237,9 +237,10 @@ export default function Home() {
     
     try {
       const docId = crypto.randomUUID();
+      const supabase = createBrowserClient();
       
       // Upload directly to Supabase storage from the client
-      const { error: storageError } = await supabaseClient.storage
+      const { error: storageError } = await supabase.storage
         .from('documents')
         .upload(docId, file, {
           contentType: file.type || 'application/pdf',
