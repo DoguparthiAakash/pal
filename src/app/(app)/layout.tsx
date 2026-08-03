@@ -31,8 +31,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       .catch(console.error);
 
     const supabase = createBrowserClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
+    supabase.auth.getUser().then((res: any) => {
+      setUser(res.data?.user);
     });
   }, []);
 
