@@ -48,14 +48,14 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     ENABLE_PROFILING: envVars.ENABLE_PROFILING === 'true',
     ENABLE_DEBUG_LOGGING: envVars.ENABLE_DEBUG_LOGGING === 'true',
     ENABLE_PERFORMANCE_METRICS: envVars.ENABLE_PERFORMANCE_METRICS === 'true',
-    ENABLE_LOCAL_SUPABASE: envVars.ENABLE_LOCAL_SUPABASE === 'true',
+    ENABLE_LOCAL_SUPABASE: envVars.ENABLE_LOCAL_SUPABASE === 'true' || envVars.NEXT_PUBLIC_ENABLE_LOCAL_SUPABASE === 'true' || process.env.NEXT_PUBLIC_ENABLE_LOCAL_SUPABASE === 'true',
   });
 
   const providersResult = ProvidersConfigSchema.safeParse({
     storage: {
       provider: envVars.STORAGE_PROVIDER || 'supabase',
-      supabaseUrl: envVars.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey: envVars.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || envVars.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || envVars.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       supabaseServiceRoleKey: envVars.SUPABASE_SERVICE_ROLE_KEY,
     },
     vectorStore: {
@@ -139,7 +139,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
   // Validate URL restrictions
   if (!config.flags.ENABLE_LOCAL_SUPABASE) {
     if (config.supabase.url.includes('localhost') || config.supabase.url.includes('127.0.0.1')) {
-      throw new ConfigError('Localhost Supabase URL is not allowed in production');
+      throw new ConfigError('Localhost Supabase URLs are not permitted unless ENABLE_LOCAL_SUPABASE=true');
     }
   }
 

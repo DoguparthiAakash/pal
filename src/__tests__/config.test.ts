@@ -78,7 +78,7 @@ describe('Configuration Builder', () => {
     };
     
     expect(() => buildConfig(env as any)).toThrow(ConfigError);
-    expect(() => buildConfig(env as any)).toThrow(/Localhost Supabase URL is not allowed in production/);
+    expect(() => buildConfig(env as any)).toThrow(/Localhost Supabase URLs are not permitted unless ENABLE_LOCAL_SUPABASE=true/);
   });
 
   it('allows localhost Supabase URL in development if ENABLE_LOCAL_SUPABASE is true', () => {
