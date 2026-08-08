@@ -9,12 +9,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const supabase = await createServerClient();
     
+    // Get the latest document to attach the workspace artifact to
+    const { data: latestDoc } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('knowledge_base_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!latestDoc) {
+      return NextResponse.json({ guide: 'Upload documents to generate a unified study guide.' });
+    }
+
     const { data: artifacts, error } = await supabase
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('document_id', 'workspace-unified')
-      .eq('type', 'guide')
+      .eq('document_id', latestDoc.id)
+      .eq('type', 'workspace-guide')
       .maybeSingle();
       
     if (error && error.code !== 'PGRST116') throw error;
@@ -48,11 +61,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const { text: guideText } = await generateText({ model, prompt: guidePrompt });
 
-    // Save as unified artifact
+    // Save as unified artifact attached to latest document
     await supabase.from('workspace_artifacts').upsert({ 
       knowledge_base_id: id, 
-      document_id: 'workspace-unified', 
-      type: 'guide', 
+      document_id: latestDoc.id, 
+      type: 'workspace-guide', 
       content: { text: guideText } 
     });
 

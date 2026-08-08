@@ -12,12 +12,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params;
     const supabase = await createServerClient();
     
+    // Get the latest document to attach the workspace artifact to
+    const { data: latestDoc } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('knowledge_base_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!latestDoc) {
+      return NextResponse.json({ topics: [] });
+    }
+
     const { data: artifacts, error } = await supabase
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('document_id', 'workspace-unified')
-      .eq('type', 'notes')
+      .eq('document_id', latestDoc.id)
+      .eq('type', 'workspace-notes')
       .maybeSingle();
       
     if (error && error.code !== 'PGRST116') throw error;
@@ -67,11 +80,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    // Save as unified artifact
+    // Save as unified artifact attached to latest document
     await supabase.from('workspace_artifacts').upsert({ 
       knowledge_base_id: id, 
-      document_id: 'workspace-unified', 
-      type: 'notes', 
+      document_id: latestDoc.id, 
+      type: 'workspace-notes', 
       content: parsedNotes 
     });
 

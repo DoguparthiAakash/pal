@@ -76,7 +76,7 @@ export class DocumentProcessingPipeline {
       
       // Invalidate unified artifacts so they regenerate with the new document
       const supabase = await createServerClient();
-      await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).eq('document_id', 'workspace-unified');
+      await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).like('type', 'workspace-%');
 
       return updatedDoc;
 
@@ -177,7 +177,7 @@ export async function generateMissingArtifacts(kbId: string) {
   for (const doc of docs) {
     if (!docsWithArtifacts.has(doc.id)) {
       // Get chunks
-      const { data: chunks } = await supabase.from('vector_store_chunks').select('content').eq('document_id', doc.id).limit(20);
+      const { data: chunks } = await supabase.from('chunks').select('content').eq('document_id', doc.id).limit(20);
       if (!chunks || chunks.length === 0) continue;
 
       const chunkTexts = chunks.map(c => c.content);

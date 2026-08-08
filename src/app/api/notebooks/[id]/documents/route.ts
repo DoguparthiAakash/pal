@@ -13,6 +13,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .from('documents')
       .select('*')
       .eq('knowledge_base_id', id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
       
     if (docError) throw docError;

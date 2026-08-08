@@ -9,13 +9,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const supabase = await createServerClient();
     
+    // Get the latest document to attach the workspace artifact to
+    const { data: latestDoc } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('knowledge_base_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!latestDoc) {
+      return NextResponse.json({ 
+        nodes: [{ id: '1', data: { label: 'Upload documents to generate a mind map.' }, position: { x: 250, y: 50 } }],
+        edges: []
+      });
+    }
+
     // Fetch pre-generated workspace-unified mindmap
     const { data: artifacts, error } = await supabase
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('document_id', 'workspace-unified')
-      .eq('type', 'mindmap')
+      .eq('document_id', latestDoc.id)
+      .eq('type', 'workspace-mindmap')
       .maybeSingle();
       
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 is no rows returned
@@ -58,11 +74,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
     const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
 
-    // Save as unified artifact
+    // Save as unified artifact attached to latest document
     await supabase.from('workspace_artifacts').upsert({ 
       knowledge_base_id: id, 
-      document_id: 'workspace-unified', 
-      type: 'mindmap', 
+      document_id: latestDoc.id, 
+      type: 'workspace-mindmap', 
       content: parsedMindmap 
     });
 
