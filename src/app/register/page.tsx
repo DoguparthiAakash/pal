@@ -3,13 +3,15 @@
 import { createBrowserClient } from '@/infrastructure/auth/client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const supabase = createBrowserClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleOAuthLogin = async (provider: 'google' | 'github') => {
     await supabase.auth.signInWithOAuth({
@@ -20,19 +22,23 @@ export default function LoginPage() {
     })
   }
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleEmailRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      }
     });
     
     if (error) {
       setError(error.message);
     } else {
-      window.location.href = '/';
+      // Direct them to check email if confirm email is required, otherwise redirect
+      router.push('/login?message=Check your email to confirm your account or sign in if no confirmation is required.');
     }
     setLoading(false);
   }
@@ -40,13 +46,13 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-50 dark:bg-gray-900">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800">
-        <h1 className="mb-6 text-center text-3xl font-bold text-gray-900 dark:text-white">Sign in to PAL</h1>
+        <h1 className="mb-6 text-center text-3xl font-bold text-gray-900 dark:text-white">Create an Account</h1>
         <p className="mb-8 text-center text-gray-500 dark:text-gray-400">
-          Access your secure, isolated Enterprise Knowledge Base.
+          Sign up to access your Enterprise Knowledge Base.
         </p>
 
         <div className="flex flex-col gap-4">
-          <form onSubmit={handleEmailLogin} className="flex flex-col gap-4">
+          <form onSubmit={handleEmailRegister} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/50 dark:text-red-200">
                 {error}
@@ -85,7 +91,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full rounded-lg bg-blue-600 px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Creating account...' : 'Sign up'}
             </button>
           </form>
 
@@ -120,9 +126,9 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Don't have an account?{' '}
-          <Link href="/register" className="font-medium text-blue-600 hover:underline dark:text-blue-500">
-            Sign up
+          Already have an account?{' '}
+          <Link href="/login" className="font-medium text-blue-600 hover:underline dark:text-blue-500">
+            Sign in
           </Link>
         </p>
       </div>
