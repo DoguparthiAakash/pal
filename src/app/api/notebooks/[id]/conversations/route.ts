@@ -7,7 +7,7 @@ const conversationRepo = new SupabaseConversationRepository();
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await authService.getCurrentUser();
@@ -15,7 +15,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const notebookId = params.id;
+    const resolvedParams = await params;
+    const notebookId = resolvedParams.id;
     if (!notebookId) {
       return NextResponse.json({ error: 'Notebook ID is required' }, { status: 400 });
     }

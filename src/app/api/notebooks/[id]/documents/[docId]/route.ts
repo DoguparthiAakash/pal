@@ -7,7 +7,7 @@ const documentRepo = new SupabaseDocumentRepository();
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string, docId: string } }
+  { params }: { params: Promise<{ id: string, docId: string }> }
 ) {
   try {
     const user = await authService.getCurrentUser();
@@ -15,7 +15,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const docId = params.docId;
+    const resolvedParams = await params;
+    const docId = resolvedParams.docId;
     if (!docId) {
       return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
     }
