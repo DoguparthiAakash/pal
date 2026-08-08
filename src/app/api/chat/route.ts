@@ -7,13 +7,16 @@ import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore
 import { GroqLLMProvider } from '@/infrastructure/llm/GroqLLMProvider';
 import { SupabaseConversationRepository } from '@/infrastructure/repositories/SupabaseConversationRepository';
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
+import { SupabaseKnowledgeBaseRepository } from '@/infrastructure/repositories/SupabaseKnowledgeBaseRepository';
 import { config } from '@/config';
+import { streamText } from 'ai';
+import { createGroq } from '@ai-sdk/groq';
 
 const observer = new ObservabilityService();
 const authService = new AuthService();
 const rateLimiter = new LocalRateLimiter();
-const llmProvider = new GroqLLMProvider();
 const conversationRepo = new SupabaseConversationRepository();
+const kbRepo = new SupabaseKnowledgeBaseRepository();
 
 const retrievalService = new RetrievalService(
   new SupabaseVectorStore(),
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Parse request
-    const { messages, conversation_id } = await req.json();
+    const { messages, conversation_id, notebookId } = await req.json();
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 });
     }
@@ -44,7 +47,13 @@ export async function POST(req: NextRequest) {
     const latestMessage = messages[messages.length - 1].content;
 
     // 4. Get KB
-    const kb = await authService.getDefaultKnowledgeBase(user.id);
+    let kb;
+    if (notebookId) {
+      kb = await kbRepo.findById(notebookId);
+    } else {
+      kb = await authService.getDefaultKnowledgeBase(user.id);
+    }
+    
     if (!kb) {
       return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
     }
@@ -73,37 +82,43 @@ export async function POST(req: NextRequest) {
     // 7. System prompt & Generation
     const systemPrompt = kb.settings.system_prompt || `You are an intelligent assistant. Use the following retrieved context to answer the user's question accurately. If you don't know the answer, just say so.\n\nContext:\n${contextText}`;
 
-    // Note: To properly support streaming with App Router, we'd wrap this in an iterator.
-    // For this rewrite, we're assuming returning standard NextResponse streams or texts.
-    // Assuming streaming for Vercel AI SDK compatibility if needed, or returning plain stream.
-    
-    const stream = await observer.traceAsync('llm_generation', user.id, async () => {
-      return await llmProvider.streamText(systemPrompt, messages, {
-        temperature: kb.settings.temperature,
-      });
+    const groq = createGroq({ apiKey: config.providers.llm.groqApiKey || '' });
+
+    const result = streamText({
+      model: groq('llama-3.1-8b-instant'),
+      system: systemPrompt,
+      messages: messages,
+      temperature: kb.settings.temperature ?? 0.7,
+      onFinish: async ({ text }) => {
+        // Fire and forget saving the messages to DB asynchronously
+        try {
+          await conversationRepo.addMessage({
+            conversation_id: conversationId,
+            role: 'user',
+            content: latestMessage,
+            sources: {
+              document_ids: Array.from(new Set(chunks.map(c => c.document_id))),
+              chunk_ids: chunks.map(c => c.id),
+              scores: chunks.map(c => (c as any).similarity || 0),
+            },
+            provider_used: kb.settings.llm_provider
+          });
+          await conversationRepo.addMessage({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: text,
+            provider_used: kb.settings.llm_provider
+          });
+        } catch (e) {
+          console.error("Failed to save messages", e);
+        }
+      }
     });
 
-    // Fire and forget saving the messages to DB asynchronously
-    // (This saves latency on the actual generation response)
-    conversationRepo.addMessage({
-      conversation_id: conversationId,
-      role: 'user',
-      content: latestMessage,
-      sources: {
-        document_ids: Array.from(new Set(chunks.map(c => c.document_id))),
-        chunk_ids: chunks.map(c => c.id),
-        scores: chunks.map(c => (c as any).similarity || 0), // we added similarity in the vector store interface
-      },
-      provider_used: kb.settings.llm_provider
-    }).catch(console.error);
-
-    return new NextResponse(stream, {
+    return result.toTextStreamResponse({
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
         'X-Conversation-Id': conversationId,
-      },
+      }
     });
 
   } catch (error: any) {

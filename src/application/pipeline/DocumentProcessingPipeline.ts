@@ -100,42 +100,62 @@ export class DocumentProcessingPipeline {
   private async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[]) {
     // We process up to first 20 chunks to avoid massive token limits
     const contextText = chunks.slice(0, 20).join('\n\n');
-    const groqApiKey = config.providers.llm.groqApiKey;
-    if (!groqApiKey || config.providers.llm.provider !== 'groq') return;
-    const groq = createGroq({ apiKey: groqApiKey });
-    const model = groq('llama-3.1-8b-instant');
+    
+    // Default to groq if available, otherwise check openai
+    let model;
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
+      model = groq('llama-3.1-8b-instant');
+    } else {
+      console.log('No supported LLM provider configured for artifact generation.');
+      return;
+    }
+    
     const supabase = await createServerClient();
+
+    // Helper to extract JSON from markdown output
+    const extractJson = (text: string) => {
+      const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      return match ? match[0] : text;
+    };
 
     // 1. Generate Guide
     const guidePrompt = `Based on the following document context, generate a "getting started" study guide. Avoid messy details, provide a simple overview of where to start and what to learn.\n\nCONTENT:\n${contextText}`;
-    const { text: guideText } = await generateText({ model, prompt: guidePrompt });
-    await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'guide', content: { text: guideText } });
+    try {
+      const { text: guideText } = await generateText({ model, prompt: guidePrompt });
+      await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'guide', content: { text: guideText } });
+    } catch (e) { console.error('Guide generation failed', e); }
 
     // 2. Generate Notes & Links
-    const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
-    const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
+    const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
     try {
-      const parsedNotes = JSON.parse(notesJsonStr.replace(/```json/g, '').replace(/```/g, ''));
+      const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
+      const parsedNotes = JSON.parse(extractJson(notesJsonStr));
       const tavily = new TavilyClient();
-      for (const t of parsedNotes.topics) {
-        t.links = await tavily.search(t.topic + ' ' + t.points[0], 3);
+      for (const t of parsedNotes.topics || []) {
+        try {
+          t.links = await tavily.search(t.topic + ' ' + t.points[0], 3);
+        } catch (linkError) {
+          console.error('Tavily search failed for topic', t.topic, linkError);
+          t.links = [];
+        }
       }
       await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'notes', content: parsedNotes });
     } catch (e) { console.error('Failed to parse notes JSON', e); }
 
     // 3. Generate Mind Map (UML-like JSON format)
-    const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }.\n\nCONTENT:\n${contextText}`;
-    const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
+    const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }.\n\nCONTENT:\n${contextText}`;
     try {
-      const parsedMindmap = JSON.parse(mindmapJsonStr.replace(/```json/g, '').replace(/```/g, ''));
+      const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
+      const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
       await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'mindmap', content: parsedMindmap });
     } catch (e) { console.error('Failed to parse mindmap JSON', e); }
     
     // 4. Extract Memory Nodes/Edges (Obsidian graph)
-    const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }\n\nCONTENT:\n${contextText}`;
-    const { text: memoryJsonStr } = await generateText({ model, prompt: memoryPrompt });
+    const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format strictly as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }\n\nCONTENT:\n${contextText}`;
     try {
-      const parsedMemory = JSON.parse(memoryJsonStr.replace(/```json/g, '').replace(/```/g, ''));
+      const { text: memoryJsonStr } = await generateText({ model, prompt: memoryPrompt });
+      const parsedMemory = JSON.parse(extractJson(memoryJsonStr));
       for (const node of parsedMemory.nodes || []) {
         await supabase.from('memory_nodes').upsert({ id: node.id || uuidv4(), knowledge_base_id: kb.id, document_id: docId, label: node.label, type: node.type || 'concept' });
       }
