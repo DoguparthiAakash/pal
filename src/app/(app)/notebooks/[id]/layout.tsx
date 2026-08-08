@@ -1,14 +1,25 @@
 'use client';
 import { ReactNode, useState, useEffect } from 'react';
 import { PanelRightClose, PanelRightOpen, MessageSquare, Search } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 export default function NotebookLayout({ children }: { children: ReactNode }) {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [conversations, setConversations] = useState<any[]>([]);
   const params = useParams();
+  const router = useRouter();
+  const notebookId = params.id as string;
   
+  useEffect(() => {
+    if (notebookId) {
+      fetch(`/api/notebooks/${notebookId}/conversations`)
+        .then(res => res.json())
+        .then(data => setConversations(data))
+        .catch(console.error);
+    }
+  }, [notebookId]);
+
   // Note: in a full implementation, messages/topics would be pulled from a Context or Store
-  const messages: any[] = []; 
   const searchTopics: any[] = [];
   const isSearching = false;
 
@@ -66,16 +77,22 @@ export default function NotebookLayout({ children }: { children: ReactNode }) {
             <MessageSquare size={14} /> Quick Go
           </h3>
           <div className="flex flex-col gap-1">
-            {messages.filter(m => m.role === 'user').length === 0 ? (
-              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No questions yet in this session.</div>
+            {conversations.length === 0 ? (
+              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No previous chats found.</div>
             ) : (
-              messages.filter(m => m.role === 'user').map(m => (
-                <button 
-                  key={m.id}
-                  className="text-left text-sm truncate px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-                  title={m.parts?.map((p: any) => p.type === 'text' ? p.text : '').join('') || ''}
+              conversations.map(conv => (
+                <button
+                  key={conv.id}
+                  onClick={() => router.push(`/notebooks/${notebookId}/chat?conversationId=${conv.id}`)}
+                  className="w-full text-left p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex items-center gap-3 group"
                 >
-                  {m.parts?.map((p: any) => p.type === 'text' ? p.text : '').join('') || ''}
+                  <MessageSquare size={16} className="text-gray-400 group-hover:text-black dark:group-hover:text-white transition-colors shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{conv.title}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {new Date(conv.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 </button>
               ))
             )}

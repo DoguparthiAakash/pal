@@ -6,21 +6,20 @@ import { Send, Search, Paperclip, History, X, MessageSquare, Loader2 } from 'luc
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createBrowserClient } from '@/infrastructure/auth/client';
 
 export default function ChatPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const activeNotebookId = params.id as string;
+  const conversationId = searchParams.get('conversationId');
   const [role, setRole] = useState("intern");
   const [input, setInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [conversations, setConversations] = useState<any[]>([]);
 
   const transport = useMemo(() => new DefaultChatTransport({
     api: "/api/chat",
@@ -39,36 +38,30 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const fetchHistory = async () => {
-    if (!activeNotebookId) return;
-    try {
-      const res = await fetch(`/api/notebooks/${activeNotebookId}/conversations`);
-      if (res.ok) {
-        setConversations(await res.json());
-      }
-    } catch (e) {
-      console.error(e);
+  useEffect(() => {
+    if (activeNotebookId && conversationId) {
+      const loadConversation = async (convId: string) => {
+        try {
+          const res = await fetch(`/api/notebooks/${activeNotebookId}/conversations/${convId}`);
+          if (res.ok) {
+            const pastMessages = await res.json();
+            // convert to what useChat expects
+            const mapped = pastMessages.map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              parts: [{ type: 'text', text: m.content }]
+            }));
+            setMessages(mapped);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+      loadConversation(conversationId);
+    } else {
+      setMessages([]);
     }
-  };
-
-  const loadConversation = async (convId: string) => {
-    setIsHistoryOpen(false);
-    try {
-      const res = await fetch(`/api/notebooks/${activeNotebookId}/conversations/${convId}`);
-      if (res.ok) {
-        const pastMessages = await res.json();
-        // convert to what useChat expects
-        const mapped = pastMessages.map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          parts: [{ type: 'text', text: m.content }]
-        }));
-        setMessages(mapped);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  }, [activeNotebookId, conversationId, setMessages]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -270,57 +263,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Floating History Button */}
-      <div className="absolute bottom-8 right-8 z-20">
-        <button
-          onClick={() => {
-            setIsHistoryOpen(!isHistoryOpen);
-            if (!isHistoryOpen) fetchHistory();
-          }}
-          className="bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 p-3 rounded-full shadow-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-          title="Chat History"
-        >
-          {isHistoryOpen ? <X size={20} /> : <History size={20} />}
-        </button>
-
-        {/* History Popover */}
-        <AnimatePresence>
-          {isHistoryOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="absolute bottom-16 right-0 w-72 max-h-96 bg-white dark:bg-[#1e1e20] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden flex flex-col"
-            >
-              <div className="p-4 border-b border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#121214]">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Recent Chats</h3>
-              </div>
-              <div className="overflow-y-auto flex-1 p-2 space-y-1">
-                {conversations.length === 0 ? (
-                  <p className="text-xs text-gray-500 p-3 text-center">No previous chats found.</p>
-                ) : (
-                  conversations.map(conv => (
-                    <button
-                      key={conv.id}
-                      onClick={() => loadConversation(conv.id)}
-                      className="w-full text-left p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex items-center gap-3 group"
-                    >
-                      <MessageSquare size={16} className="text-gray-400 group-hover:text-black dark:group-hover:text-white transition-colors shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{conv.title}</p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          {new Date(conv.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* Removed Floating History Button */}
 
     </div>
   );
