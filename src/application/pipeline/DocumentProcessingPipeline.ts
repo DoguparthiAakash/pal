@@ -74,11 +74,9 @@ export class DocumentProcessingPipeline {
       // 7. Ready
       const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
       
-      // 8. Generate Artifacts Asynchronously (Fire and forget to not block upload)
+      // Invalidate unified artifacts so they regenerate with the new document
       const supabase = await createServerClient();
-      this.generateArtifacts(user, kb, docId, chunks, supabase).catch(err => {
-        console.error('Artifact generation failed:', err);
-      });
+      await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).eq('document_id', 'workspace-unified');
 
       return updatedDoc;
 

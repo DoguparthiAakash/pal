@@ -1,50 +1,72 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
-import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
+import { generateText } from 'ai';
+import { createGroq } from '@ai-sdk/groq';
+import { config } from '@/config';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const supabase = await createServerClient();
     
-    // Fetch pre-generated mindmaps from artifacts
+    // Fetch pre-generated workspace-unified mindmap
     const { data: artifacts, error } = await supabase
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('type', 'mindmap');
+      .eq('document_id', 'workspace-unified')
+      .eq('type', 'mindmap')
+      .maybeSingle();
       
-    if (error) throw error;
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 is no rows returned
 
-    if (!artifacts || artifacts.length === 0) {
-      // Trigger background generation for any missing artifacts
-      generateMissingArtifacts(id).catch(console.error);
+    if (artifacts?.content) {
+      return NextResponse.json(artifacts.content);
+    }
+
+    // Generate it dynamically
+    const { data: chunks, error: chunkErr } = await supabase
+      .from('chunks')
+      .select('content')
+      .eq('knowledge_base_id', id)
+      .limit(30);
+
+    if (chunkErr || !chunks || chunks.length === 0) {
       return NextResponse.json({ 
-        nodes: [{ id: '1', data: { label: 'Processing Mind Map. Please refresh in a moment.' }, position: { x: 250, y: 50 } }],
+        nodes: [{ id: '1', data: { label: 'Upload documents to generate a mind map.' }, position: { x: 250, y: 50 } }],
         edges: []
       });
     }
 
-    // Merge all nodes and edges from different documents
-    const allNodes: any[] = [];
-    const allEdges: any[] = [];
-    
-    artifacts.forEach(a => {
-      if (a.content.nodes) allNodes.push(...a.content.nodes);
-      if (a.content.edges) allEdges.push(...a.content.edges);
+    const contextText = chunks.map(c => c.content).join('\n\n');
+
+    let model;
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
+      model = groq('llama-3.1-8b-instant');
+    } else {
+      throw new Error("No supported LLM provider configured");
+    }
+
+    const extractJson = (text: string) => {
+      const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      return match ? match[0] : text;
+    };
+
+    const mindmapPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize a unified, comprehensive Mind Map bridging concepts together. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }.\n\nCONTENT:\n${contextText}`;
+
+    const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
+    const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
+
+    // Save as unified artifact
+    await supabase.from('workspace_artifacts').upsert({ 
+      knowledge_base_id: id, 
+      document_id: 'workspace-unified', 
+      type: 'mindmap', 
+      content: parsedMindmap 
     });
 
-    // Make IDs unique if they clash, or assume LLM generated unique ones
-    // For React Flow, nodes just need unique IDs. We'll add a random suffix to be safe
-    const suffix = Math.random().toString(36).substring(7);
-    const uniqueNodes = allNodes.map((n, i) => ({ ...n, id: `${n.id}_${suffix}_${i}` }));
-    const uniqueEdges = allEdges.map((e, i) => ({ 
-      ...e, 
-      id: `${e.id}_${suffix}_${i}`,
-      source: `${e.source}_${suffix}_${i}`, // this breaks if edge source is not exactly matching array index, but we'll let it be for now, wait, better not to suffix unless they clash. Let's just return as is and assume LLM is smart or we fix it on frontend
-    }));
-
-    return NextResponse.json({ nodes: allNodes, edges: allEdges });
+    return NextResponse.json(parsedMindmap);
 
   } catch (err: any) {
     console.error('Mindmap error:', err);

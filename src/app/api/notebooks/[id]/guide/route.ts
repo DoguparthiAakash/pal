@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
-import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
+import { generateText } from 'ai';
+import { createGroq } from '@ai-sdk/groq';
+import { config } from '@/config';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,20 +13,50 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('type', 'guide');
+      .eq('document_id', 'workspace-unified')
+      .eq('type', 'guide')
+      .maybeSingle();
       
-    if (error) throw error;
+    if (error && error.code !== 'PGRST116') throw error;
 
-    if (!artifacts || artifacts.length === 0) {
-      // Trigger background generation for any missing artifacts
-      generateMissingArtifacts(id).catch(console.error);
-      return NextResponse.json({ guide: 'Processing your document to generate a guide. Please refresh in a moment.' });
+    if (artifacts?.content) {
+      return NextResponse.json({ guide: artifacts.content.text });
     }
 
-    // Combine guides if multiple documents exist
-    const combinedGuide = artifacts.map((a, i) => `### Document ${i + 1}\n${a.content.text}`).join('\n\n');
+    // Generate it dynamically
+    const { data: chunks, error: chunkErr } = await supabase
+      .from('chunks')
+      .select('content')
+      .eq('knowledge_base_id', id)
+      .limit(30);
 
-    return NextResponse.json({ guide: combinedGuide });
+    if (chunkErr || !chunks || chunks.length === 0) {
+      return NextResponse.json({ guide: 'Upload documents to generate a unified study guide.' });
+    }
+
+    const contextText = chunks.map(c => c.content).join('\n\n');
+
+    let model;
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
+      model = groq('llama-3.1-8b-instant');
+    } else {
+      throw new Error("No supported LLM provider configured");
+    }
+
+    const guidePrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize a unified, comprehensive "getting started" study guide. Avoid messy details, provide a cohesive overview of what to learn.\n\nCONTENT:\n${contextText}`;
+
+    const { text: guideText } = await generateText({ model, prompt: guidePrompt });
+
+    // Save as unified artifact
+    await supabase.from('workspace_artifacts').upsert({ 
+      knowledge_base_id: id, 
+      document_id: 'workspace-unified', 
+      type: 'guide', 
+      content: { text: guideText } 
+    });
+
+    return NextResponse.json({ guide: guideText });
 
   } catch (err: any) {
     console.error('Guide error:', err);

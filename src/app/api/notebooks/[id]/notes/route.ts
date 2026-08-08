@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
-import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
+import { generateText } from 'ai';
+import { createGroq } from '@ai-sdk/groq';
+import { config } from '@/config';
+import { TavilyClient } from '@/infrastructure/tavily/TavilyClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,23 +16,66 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .from('workspace_artifacts')
       .select('content')
       .eq('knowledge_base_id', id)
-      .eq('type', 'notes');
+      .eq('document_id', 'workspace-unified')
+      .eq('type', 'notes')
+      .maybeSingle();
       
-    if (error) throw error;
+    if (error && error.code !== 'PGRST116') throw error;
 
-    if (!artifacts || artifacts.length === 0) {
-      // Trigger background generation for any missing artifacts
-      generateMissingArtifacts(id).catch(console.error);
+    if (artifacts?.content) {
+      return NextResponse.json({ topics: artifacts.content.topics });
     }
 
-    let combinedTopics: any[] = [];
-    artifacts?.forEach(a => {
-      if (a.content.topics) {
-        combinedTopics.push(...a.content.topics);
+    // Generate it dynamically
+    const { data: chunks, error: chunkErr } = await supabase
+      .from('chunks')
+      .select('content')
+      .eq('knowledge_base_id', id)
+      .limit(30);
+
+    if (chunkErr || !chunks || chunks.length === 0) {
+      return NextResponse.json({ topics: [] });
+    }
+
+    const contextText = chunks.map(c => c.content).join('\n\n');
+
+    let model;
+    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
+      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
+      model = groq('llama-3.1-8b-instant');
+    } else {
+      throw new Error("No supported LLM provider configured");
+    }
+
+    const extractJson = (text: string) => {
+      const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      return match ? match[0] : text;
+    };
+
+    const notesPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize unified short bullet point notes on each key topic bridging concepts across documents. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
+
+    const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
+    const parsedNotes = JSON.parse(extractJson(notesJsonStr));
+
+    const tavily = new TavilyClient();
+    for (const t of parsedNotes.topics || []) {
+      try {
+        t.links = await tavily.search(t.topic + ' ' + t.points[0], 3);
+      } catch (linkError) {
+        console.error('Tavily search failed for topic', t.topic, linkError);
+        t.links = [];
       }
+    }
+
+    // Save as unified artifact
+    await supabase.from('workspace_artifacts').upsert({ 
+      knowledge_base_id: id, 
+      document_id: 'workspace-unified', 
+      type: 'notes', 
+      content: parsedNotes 
     });
 
-    return NextResponse.json({ topics: combinedTopics });
+    return NextResponse.json({ topics: parsedNotes.topics });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
