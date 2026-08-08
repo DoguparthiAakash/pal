@@ -40,7 +40,8 @@ export class DocumentProcessingPipeline {
 
       // 3. Extract & Chunk
       const chunks = await this.observer.traceAsync('chunking', user.id, async () => {
-        const ast = await officeParser.parseOffice(buffer);
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+        const ast = await officeParser.parseOffice(buffer, { fileType: ext } as any);
         const text = ast.toText();
         
         return this.chunkText(text, kb.settings.chunk_size, kb.settings.chunk_overlap);
