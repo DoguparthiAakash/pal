@@ -50,7 +50,7 @@ function ChatContent() {
               const mapped = pastMessages.map((m: any) => ({
                 id: m.id,
                 role: m.role,
-                parts: [{ type: 'text', text: m.content }]
+                parts: [{ type: 'text' as const, text: m.content }]
               }));
               setMessages(mapped);
             } else {
