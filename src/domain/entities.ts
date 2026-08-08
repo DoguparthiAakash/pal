@@ -40,6 +40,7 @@ export interface Document {
   id: string;
   knowledge_base_id: string;
   user_id: string; // Redundant but good for quick authorization without joins
+  title: string;
   original_name: string;
   storage_path: string;
   mime_type: string;

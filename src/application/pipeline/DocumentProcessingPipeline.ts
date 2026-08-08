@@ -24,6 +24,7 @@ export class DocumentProcessingPipeline {
       id: docId,
       knowledge_base_id: kb.id,
       user_id: user.id,
+      title: file.name,
       original_name: file.name,
       storage_path: filePath,
       mime_type: file.type,
