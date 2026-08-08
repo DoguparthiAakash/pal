@@ -2,7 +2,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot, PanelLeftClose, PanelLeftOpen, MessageSquare, FileText, Map, Headphones, Database, AlignLeft, Plus, Upload, Link as LinkIcon } from 'lucide-react';
+import { Bot, PanelLeftClose, PanelLeftOpen, MessageSquare, FileText, Map, AlignLeft, Upload, Share2, BookOpen, StickyNote, BrainCircuit } from 'lucide-react';
 import { createBrowserClient } from '@/infrastructure/auth/client';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -153,14 +153,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <Link href={`/notebooks/${activeNotebookId}/chat`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/chat') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                 <MessageSquare size={14} /> Chat
               </Link>
-              <Link href={`/notebooks/${activeNotebookId}/guide`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/guide') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
-                <FileText size={14} /> Guide
-              </Link>
               <Link href={`/notebooks/${activeNotebookId}/mindmap`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/mindmap') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
-                <Map size={14} /> Mind Map
+                <Share2 size={14} /> Mind Map
               </Link>
-              <Link href={`/notebooks/${activeNotebookId}/notes`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 justify-center ${pathname.includes('/notes') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
-                <AlignLeft size={14} /> Notes
+              <Link href={`/notebooks/${activeNotebookId}/guide`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/guide') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <BookOpen size={14} /> Guide
+              </Link>
+              <Link href={`/notebooks/${activeNotebookId}/notes`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/notes') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <StickyNote size={14} /> Notes
+              </Link>
+              <Link href={`/notebooks/${activeNotebookId}/memory`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/memory') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <BrainCircuit size={14} /> Memory
               </Link>
             </div>
           </div>

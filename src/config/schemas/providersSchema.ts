@@ -15,6 +15,8 @@ export const LLMConfigSchema = z.object({
   provider: z.enum(['groq', 'openai', 'ollama']).default('groq'),
   groqApiKey: z.string().optional(),
   openaiApiKey: z.string().optional(),
+  ollamaBaseUrl: z.string().optional(),
+  tavilyApiKey: z.string().optional(),
 });
 
 export const EmbeddingConfigSchema = z.object({

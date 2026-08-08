@@ -8,15 +8,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params;
     const supabase = await createServerClient();
     
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('notebook_id', id)
-      .order('created_at', { ascending: false });
+    const { data: artifacts, error } = await supabase
+      .from('workspace_artifacts')
+      .select('content')
+      .eq('knowledge_base_id', id)
+      .eq('type', 'notes');
       
     if (error) throw error;
-    
-    return NextResponse.json(data);
+
+    let combinedTopics: any[] = [];
+    artifacts?.forEach(a => {
+      if (a.content.topics) {
+        combinedTopics.push(...a.content.topics);
+      }
+    });
+
+    return NextResponse.json({ topics: combinedTopics });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

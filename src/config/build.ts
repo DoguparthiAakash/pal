@@ -65,6 +65,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
       provider: envVars.LLM_PROVIDER || 'groq',
       groqApiKey: envVars.GROQ_API_KEY,
       openaiApiKey: envVars.OPENAI_API_KEY,
+      tavilyApiKey: envVars.TAVILY_API_KEY,
     },
     embedding: {
       provider: envVars.EMBEDDING_PROVIDER || 'mock',
