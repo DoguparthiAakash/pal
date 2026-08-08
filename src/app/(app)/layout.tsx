@@ -48,6 +48,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     } else {
       setDocs([]);
     }
+
+    const handleRefresh = () => {
+      if (activeNotebookId) fetchDocs();
+    };
+    window.addEventListener('refresh-docs', handleRefresh);
+    return () => window.removeEventListener('refresh-docs', handleRefresh);
   }, [activeNotebookId]);
 
   const handleDeleteDocument = async (docId: string) => {

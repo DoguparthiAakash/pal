@@ -44,7 +44,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 });
     }
 
-    const latestMessage = messages[messages.length - 1].content;
+    const lastMsg = messages[messages.length - 1];
+    let latestMessage = lastMsg.content || '';
+    if (!latestMessage && Array.isArray(lastMsg.parts)) {
+      latestMessage = lastMsg.parts.map((p: any) => p.text || '').join('');
+    }
+
+    const coreMessages = messages.map((m: any) => {
+      let content = m.content;
+      if (!content && Array.isArray(m.parts)) {
+        content = m.parts.map((p: any) => p.text || '').join('');
+      }
+      return {
+        role: m.role,
+        content: content || ''
+      };
+    });
 
     // 4. Get KB
     let kb;
@@ -87,7 +102,7 @@ export async function POST(req: NextRequest) {
     const result = streamText({
       model: groq('llama-3.1-8b-instant'),
       system: systemPrompt,
-      messages: messages,
+      messages: coreMessages,
       temperature: kb.settings.temperature ?? 0.7,
       onFinish: async ({ text }) => {
         // Fire and forget saving the messages to DB asynchronously

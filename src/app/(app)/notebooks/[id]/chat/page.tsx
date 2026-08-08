@@ -108,6 +108,8 @@ function ChatContent() {
           headers: { "Content-Type": "application/json" }
         });
         
+        window.dispatchEvent(new Event('refresh-docs'));
+        
         // Add a system message locally
         setMessages([...messages, {
           id: crypto.randomUUID(),
