@@ -165,3 +165,34 @@ export class DocumentProcessingPipeline {
     } catch (e) { console.error('Failed to parse memory graph JSON', e); }
   }
 }
+
+export async function generateMissingArtifacts(kbId: string) {
+  const supabase = await createServerClient();
+  
+  // Find all documents in this kb
+  const { data: docs } = await supabase.from('documents').select('*').eq('knowledge_base_id', kbId);
+  if (!docs || docs.length === 0) return;
+
+  // Find all artifacts for this kb
+  const { data: artifacts } = await supabase.from('workspace_artifacts').select('document_id').eq('knowledge_base_id', kbId);
+  const docsWithArtifacts = new Set((artifacts || []).map(a => a.document_id));
+
+  for (const doc of docs) {
+    if (!docsWithArtifacts.has(doc.id)) {
+      // Get chunks
+      const { data: chunks } = await supabase.from('vector_store_chunks').select('content').eq('document_id', doc.id).limit(20);
+      if (!chunks || chunks.length === 0) continue;
+
+      const chunkTexts = chunks.map(c => c.content);
+      
+      // Use pipeline's generateArtifacts (hacky instantiation just for the method)
+      const mockPipeline = new DocumentProcessingPipeline(null as any, null as any, null as any, null as any, null as any);
+      // We need a dummy user and kb object since generateArtifacts uses them
+      const user = { id: doc.user_id } as User;
+      const kb = { id: kbId } as KnowledgeBase;
+      
+      console.log(`Generating missing artifacts for doc ${doc.id}`);
+      await (mockPipeline as any).generateArtifacts(user, kb, doc.id, chunkTexts).catch(console.error);
+    }
+  }
+}

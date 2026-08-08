@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
+import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .eq('knowledge_base_id', id);
       
     if (nodesError) throw nodesError;
+
+    if (!nodes || nodes.length === 0) {
+      // Trigger background generation for any missing artifacts
+      generateMissingArtifacts(id).catch(console.error);
+    }
 
     const { data: edges, error: edgesError } = await supabase
       .from('memory_edges')

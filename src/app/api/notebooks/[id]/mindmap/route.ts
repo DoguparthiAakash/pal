@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
+import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,8 +17,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (error) throw error;
 
     if (!artifacts || artifacts.length === 0) {
+      // Trigger background generation for any missing artifacts
+      generateMissingArtifacts(id).catch(console.error);
       return NextResponse.json({ 
-        nodes: [{ id: '1', data: { label: 'Processing Mind Map...' }, position: { x: 250, y: 50 } }],
+        nodes: [{ id: '1', data: { label: 'Processing Mind Map. Please refresh in a moment.' }, position: { x: 250, y: 50 } }],
         edges: []
       });
     }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
+import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,7 +16,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (error) throw error;
 
     if (!artifacts || artifacts.length === 0) {
-      return NextResponse.json({ guide: 'Processing your document to generate a guide...' });
+      // Trigger background generation for any missing artifacts
+      generateMissingArtifacts(id).catch(console.error);
+      return NextResponse.json({ guide: 'Processing your document to generate a guide. Please refresh in a moment.' });
     }
 
     // Combine guides if multiple documents exist

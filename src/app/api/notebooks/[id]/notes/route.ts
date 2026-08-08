@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/infrastructure/auth/server';
+import { generateMissingArtifacts } from '@/application/pipeline/DocumentProcessingPipeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .eq('type', 'notes');
       
     if (error) throw error;
+
+    if (!artifacts || artifacts.length === 0) {
+      // Trigger background generation for any missing artifacts
+      generateMissingArtifacts(id).catch(console.error);
+    }
 
     let combinedTopics: any[] = [];
     artifacts?.forEach(a => {
