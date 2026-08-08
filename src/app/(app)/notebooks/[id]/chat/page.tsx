@@ -46,12 +46,16 @@ function ChatContent() {
           if (res.ok) {
             const pastMessages = await res.json();
             // convert to what useChat expects
-            const mapped = pastMessages.map((m: any) => ({
-              id: m.id,
-              role: m.role,
-              parts: [{ type: 'text', text: m.content }]
-            }));
-            setMessages(mapped);
+            if (Array.isArray(pastMessages)) {
+              const mapped = pastMessages.map((m: any) => ({
+                id: m.id,
+                role: m.role,
+                parts: [{ type: 'text', text: m.content }]
+              }));
+              setMessages(mapped);
+            } else {
+              console.error('Expected array of messages but got:', pastMessages);
+            }
           }
         } catch (e) {
           console.error(e);

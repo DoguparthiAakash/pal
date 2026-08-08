@@ -14,7 +14,14 @@ export default function NotebookLayout({ children }: { children: ReactNode }) {
     if (notebookId) {
       fetch(`/api/notebooks/${notebookId}/conversations`)
         .then(res => res.json())
-        .then(data => setConversations(data))
+        .then(data => {
+          if (Array.isArray(data)) {
+            setConversations(data);
+          } else {
+            console.error('Expected array of conversations but got:', data);
+            setConversations([]);
+          }
+        })
         .catch(console.error);
     }
   }, [notebookId]);
