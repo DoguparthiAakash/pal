@@ -73,4 +73,15 @@ export class SupabaseDocumentRepository implements DocumentRepository {
       throw new Error(`Failed to soft delete document: ${error.message}`);
     }
   }
+
+  async delete(id: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('documents')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      throw new Error(`Failed to delete document: ${error.message}`);
+    }
+  }
 }

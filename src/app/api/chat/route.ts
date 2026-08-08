@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return result.toTextStreamResponse({
+    return result.toUIMessageStreamResponse({
       headers: {
         'X-Conversation-Id': conversationId,
       }

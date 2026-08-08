@@ -59,6 +59,7 @@ export interface DocumentRepository {
   create(doc: Partial<Document>): Promise<Document>;
   update(id: string, doc: Partial<Document>): Promise<Document>;
   softDelete(id: string): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 export interface ConversationRepository {

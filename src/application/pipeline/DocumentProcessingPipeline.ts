@@ -75,7 +75,8 @@ export class DocumentProcessingPipeline {
       const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
       
       // 8. Generate Artifacts Asynchronously (Fire and forget to not block upload)
-      this.generateArtifacts(user, kb, docId, chunks).catch(err => {
+      const supabase = await createServerClient();
+      this.generateArtifacts(user, kb, docId, chunks, supabase).catch(err => {
         console.error('Artifact generation failed:', err);
       });
 
@@ -97,7 +98,7 @@ export class DocumentProcessingPipeline {
     return chunks;
   }
 
-  private async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[]) {
+  public async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[], supabase: any) {
     // We process up to first 20 chunks to avoid massive token limits
     const contextText = chunks.slice(0, 20).join('\n\n');
     
@@ -110,8 +111,6 @@ export class DocumentProcessingPipeline {
       console.log('No supported LLM provider configured for artifact generation.');
       return;
     }
-    
-    const supabase = await createServerClient();
 
     // Helper to extract JSON from markdown output
     const extractJson = (text: string) => {
@@ -192,7 +191,7 @@ export async function generateMissingArtifacts(kbId: string) {
       const kb = { id: kbId } as KnowledgeBase;
       
       console.log(`Generating missing artifacts for doc ${doc.id}`);
-      await (mockPipeline as any).generateArtifacts(user, kb, doc.id, chunkTexts).catch(console.error);
+      await (mockPipeline as any).generateArtifacts(user, kb, doc.id, chunkTexts, supabase).catch(console.error);
     }
   }
 }

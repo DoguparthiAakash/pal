@@ -2,7 +2,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot, PanelLeftClose, PanelLeftOpen, MessageSquare, FileText, Map, AlignLeft, Upload, Share2, BookOpen, StickyNote, BrainCircuit } from 'lucide-react';
+import { Bot, PanelLeftClose, PanelLeftOpen, MessageSquare, FileText, Map, AlignLeft, Upload, Share2, BookOpen, StickyNote, BrainCircuit, Trash2 } from 'lucide-react';
 import { createBrowserClient } from '@/infrastructure/auth/client';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -50,58 +50,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [activeNotebookId]);
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !activeNotebookId) return;
-    setUploading(true);
+  const handleDeleteDocument = async (docId: string) => {
+    if (!activeNotebookId) return;
+    if (!confirm("Are you sure you want to delete this document? This will permanently remove its parsed data and graphs.")) return;
     
     try {
-      const docId = crypto.randomUUID();
-      const fileExt = file.name.split('.').pop() || 'bin';
-      const filePath = `uploads/${user?.id || 'guest'}/${docId}.${fileExt}`;
-
-      const supabase = createBrowserClient();
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          filePath,
-          fileName: file.name,
-          mimeType: file.type,
-          size: file.size
-        })
+      const res = await fetch(`/api/notebooks/${activeNotebookId}/documents/${docId}`, {
+        method: 'DELETE'
       });
-
       if (res.ok) {
-        const result = await res.json();
-        await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
-          method: "POST",
-          body: JSON.stringify({ document_id: result.document_id }),
-          headers: { "Content-Type": "application/json" }
-        });
         fetchDocs();
       } else {
-        const text = await res.text();
-        try {
-          const errData = JSON.parse(text);
-          throw new Error(errData.error || 'Upload failed');
-        } catch(e) {
-          throw new Error(text || 'Upload failed');
-        }
+        const err = await res.json();
+        alert("Delete failed: " + err.error);
       }
-    } catch (err: any) {
-      alert("Upload failed: " + err.message);
+    } catch (e: any) {
+      alert("Delete failed: " + e.message);
     }
-    setUploading(false);
-    setFile(null);
   };
 
   return (
@@ -172,29 +137,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {/* Sources Section */}
         {activeNotebookId && (
           <div className="flex-1 overflow-y-auto flex flex-col">
-            <div className="p-5 border-b border-gray-200 dark:border-white/5">
-              <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider flex items-center gap-2">Add Source</h3>
-              <form onSubmit={handleUpload} className="space-y-3">
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,image/*"
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                  className="text-xs w-full text-gray-600 dark:text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 transition-colors"
-                  required
-                />
-                <button type="submit" disabled={uploading || !file} className="w-full bg-gray-900 hover:bg-black text-white rounded-lg p-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
-                  <Upload size={16} /> {uploading ? "Uploading..." : "Upload New"}
-                </button>
-              </form>
-            </div>
-            
             <div className="p-5 flex-1">
               <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider flex items-center gap-2">Sources</h3>
               <div className="space-y-2">
                 {docs.length === 0 && <div className="text-sm text-gray-500 px-1">No sources linked.</div>}
                 {docs.map(d => (
-                  <div key={d.id} className="text-sm p-3 bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-200 dark:border-white/5 shadow-sm">
-                    <div className="font-medium truncate text-gray-900 dark:text-gray-100 flex items-center gap-2"><FileText size={14} className="text-gray-400 shrink-0" /> <span className="truncate">{d.title}</span></div>
+                  <div key={d.id} className="text-sm p-3 bg-white dark:bg-[#1e1e20] rounded-xl border border-gray-200 dark:border-white/5 shadow-sm group flex items-center justify-between">
+                    <div className="font-medium truncate text-gray-900 dark:text-gray-100 flex items-center gap-2 min-w-0">
+                      <FileText size={14} className="text-gray-400 shrink-0" /> 
+                      <span className="truncate">{d.title}</span>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteDocument(d.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md shrink-0"
+                      title="Delete document"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 ))}
               </div>

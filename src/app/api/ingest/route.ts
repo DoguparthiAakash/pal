@@ -36,18 +36,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
     }
 
-    // 3. Get User's default Knowledge Base
-    const kb = await authService.getDefaultKnowledgeBase(user.id);
-    if (!kb) {
-      return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
-    }
-
-    // 4. Parse JSON body
+    // 3. Parse JSON body
     const body = await req.json();
-    const { filePath, fileName, mimeType, size } = body;
+    const { filePath, fileName, mimeType, size, notebookId } = body;
     
     if (!filePath || !fileName) {
       return NextResponse.json({ error: 'Missing file metadata' }, { status: 400 });
+    }
+
+    // 4. Get Target Knowledge Base
+    let kb;
+    if (notebookId) {
+      // Validate they own this notebook
+      const { createServerClient } = await import('@/infrastructure/auth/server');
+      const supabase = await createServerClient();
+      const { data: nkb, error: nkbErr } = await supabase
+        .from('knowledge_bases')
+        .select('*')
+        .eq('id', notebookId)
+        .eq('user_id', user.id)
+        .single();
+      if (!nkbErr && nkb) {
+        kb = nkb;
+      }
+    }
+    
+    if (!kb) {
+      kb = await authService.getDefaultKnowledgeBase(user.id);
+    }
+
+    if (!kb) {
+      return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
     }
 
     // 5. Run the pipeline
