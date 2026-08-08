@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { Suspense, useState, useRef, useMemo, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { Send, Search, Paperclip, History, X, MessageSquare, Loader2 } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createBrowserClient } from '@/infrastructure/auth/client';
 
-export default function ChatPage() {
+function ChatContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const activeNotebookId = params.id as string;
@@ -266,5 +266,17 @@ export default function ChatPage() {
       {/* Removed Floating History Button */}
 
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 flex items-center justify-center h-full">
+        <Loader2 className="animate-spin text-gray-400" size={32} />
+      </div>
+    }>
+      <ChatContent />
+    </Suspense>
   );
 }
