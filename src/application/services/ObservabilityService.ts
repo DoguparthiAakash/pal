@@ -1,5 +1,5 @@
 export interface TraceEvent {
-  action: 'upload' | 'chunking' | 'embedding' | 'vector_insert' | 'retrieval' | 'llm_generation' | 'auth_check';
+  action: 'upload' | 'download' | 'chunking' | 'embedding' | 'vector_insert' | 'retrieval' | 'llm_generation' | 'auth_check';
   durationMs: number;
   metadata?: Record<string, any>;
   userId?: string;

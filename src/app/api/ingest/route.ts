@@ -42,15 +42,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
     }
 
-    // 4. Parse multipart form data
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    // 4. Parse JSON body
+    const body = await req.json();
+    const { filePath, fileName, mimeType, size } = body;
+    
+    if (!filePath || !fileName) {
+      return NextResponse.json({ error: 'Missing file metadata' }, { status: 400 });
     }
 
     // 5. Run the pipeline
-    const document = await pipeline.process(file, user, kb);
+    const document = await pipeline.process(user, kb, filePath, fileName, mimeType || 'application/octet-stream', size || 0);
 
     return NextResponse.json({ 
       success: true, 

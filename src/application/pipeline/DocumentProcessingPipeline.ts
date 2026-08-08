@@ -3,8 +3,8 @@ import { StorageProvider, EmbeddingProvider, VectorStore, DocumentRepository } f
 import { KnowledgeBase, User, Document, Chunk } from '@/domain/entities';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
 
-// PDF Parsing (We rely on standard pdf-parse or similar, keeping this abstract)
-import pdfParse from 'pdf-parse';
+// Document Parsing
+import officeParser from 'officeparser';
 
 export class DocumentProcessingPipeline {
   constructor(
@@ -15,43 +15,33 @@ export class DocumentProcessingPipeline {
     private observer: ObservabilityService
   ) {}
 
-  async process(file: File, user: User, kb: KnowledgeBase): Promise<Document> {
+  async process(user: User, kb: KnowledgeBase, filePath: string, fileName: string, mimeType: string, size: number): Promise<Document> {
     const docId = uuidv4();
-    const filePath = `uploads/${user.id}/${docId}.pdf`;
 
     // 1. Initial Document Record (Pending)
     const documentRecord = await this.documentRepo.create({
       id: docId,
       knowledge_base_id: kb.id,
       user_id: user.id,
-      title: file.name,
-      original_name: file.name,
+      title: fileName,
+      original_name: fileName,
       storage_path: filePath,
-      mime_type: file.type,
-      size: file.size,
+      mime_type: mimeType,
+      size: size,
       status: 'Pending',
     });
 
     try {
-      // 2. Validate
-      if (file.type !== 'application/pdf') {
-        throw new Error('Only PDF files are supported.');
-      }
-
-      // 3. Storage
-      await this.observer.traceAsync('upload', user.id, async () => {
+      // 2. Download from Storage (previously uploaded by client)
+      const buffer = await this.observer.traceAsync('download', user.id, async () => {
         await this.documentRepo.update(docId, { status: 'Processing' });
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        await this.storageProvider.uploadFile(filePath, buffer);
+        return await this.storageProvider.downloadFile(filePath);
       }, { docId });
 
-      // 4. Extract & Chunk
+      // 3. Extract & Chunk
       const chunks = await this.observer.traceAsync('chunking', user.id, async () => {
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const pdfData = await pdfParse(buffer);
-        const text = pdfData.text;
+        const ast = await officeParser.parseOffice(buffer);
+        const text = ast.toText();
         
         return this.chunkText(text, kb.settings.chunk_size, kb.settings.chunk_overlap);
       }, { docId });

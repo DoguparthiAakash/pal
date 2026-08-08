@@ -56,12 +56,28 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     setUploading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const docId = crypto.randomUUID();
+      const fileExt = file.name.split('.').pop() || 'bin';
+      const filePath = `uploads/${user?.id || 'guest'}/${docId}.${fileExt}`;
+
+      const supabase = createBrowserClient();
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
 
       const res = await fetch("/api/ingest", {
         method: "POST",
-        body: formData
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          filePath,
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size
+        })
       });
 
       if (res.ok) {
@@ -73,8 +89,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         });
         fetchDocs();
       } else {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Upload failed');
+        const text = await res.text();
+        try {
+          const errData = JSON.parse(text);
+          throw new Error(errData.error || 'Upload failed');
+        } catch(e) {
+          throw new Error(text || 'Upload failed');
+        }
       }
     } catch (err: any) {
       alert("Upload failed: " + err.message);
@@ -153,6 +174,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <form onSubmit={handleUpload} className="space-y-3">
                 <input
                   type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,image/*"
                   onChange={e => setFile(e.target.files?.[0] || null)}
                   className="text-xs w-full text-gray-600 dark:text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 transition-colors"
                   required
