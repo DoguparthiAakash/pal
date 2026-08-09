@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 60; // Allow max execution time on Vercel
-
 import { AuthService } from '@/application/services/AuthService';
 import { DocumentProcessingPipeline } from '@/application/pipeline/DocumentProcessingPipeline';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
