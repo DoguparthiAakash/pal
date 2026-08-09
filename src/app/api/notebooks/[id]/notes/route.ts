@@ -69,7 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const notesPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize unified short bullet point notes on each key topic bridging concepts across documents. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
 
-    let parsedNotes = { topics: [] };
+    let parsedNotes: any = { topics: [] };
     try {
       const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
       parsedNotes = JSON.parse(extractJson(notesJsonStr));
