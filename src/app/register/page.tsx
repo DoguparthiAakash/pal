@@ -26,7 +26,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -36,8 +36,11 @@ export default function RegisterPage() {
     
     if (error) {
       setError(error.message);
+    } else if (data.session) {
+      // If email confirmations are disabled (e.g. locally), the user gets a session immediately
+      window.location.href = '/';
     } else {
-      // Direct them to check email if confirm email is required, otherwise redirect
+      // Direct them to check email if confirm email is required
       router.push('/login?message=Check your email to confirm your account or sign in if no confirmation is required.');
     }
     setLoading(false);
