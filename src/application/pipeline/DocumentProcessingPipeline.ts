@@ -97,8 +97,8 @@ export class DocumentProcessingPipeline {
   }
 
   public async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[], supabase: any) {
-    // We process up to first 20 chunks to avoid massive token limits
-    const contextText = chunks.slice(0, 20).join('\n\n');
+    // We process up to first 8 chunks to avoid massive token limits
+    const contextText = chunks.slice(0, 8).join('\n\n');
     
     // Default to groq if available, otherwise check openai
     let model;
@@ -177,7 +177,7 @@ export async function generateMissingArtifacts(kbId: string) {
   for (const doc of docs) {
     if (!docsWithArtifacts.has(doc.id)) {
       // Get chunks
-      const { data: chunks } = await supabase.from('chunks').select('content').eq('document_id', doc.id).limit(20);
+      const { data: chunks } = await supabase.from('chunks').select('content').eq('document_id', doc.id).limit(8);
       if (!chunks || chunks.length === 0) continue;
 
       const chunkTexts = chunks.map(c => c.content);

@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .from('chunks')
       .select('content')
       .eq('knowledge_base_id', id)
-      .limit(30);
+      .limit(8);
 
     if (chunkErr || !chunks || chunks.length === 0) {
       return NextResponse.json({ topics: [] });
@@ -67,8 +67,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const notesPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize unified short bullet point notes on each key topic bridging concepts across documents. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
 
-    const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
-    const parsedNotes = JSON.parse(extractJson(notesJsonStr));
+    let parsedNotes = { topics: [] };
+    try {
+      const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
+      parsedNotes = JSON.parse(extractJson(notesJsonStr));
+    } catch (llmErr) {
+      console.error('LLM rate limit or generation error in notes route:', llmErr);
+      return NextResponse.json({ topics: [] });
+    }
 
     const tavily = new TavilyClient();
     for (const t of parsedNotes.topics || []) {
