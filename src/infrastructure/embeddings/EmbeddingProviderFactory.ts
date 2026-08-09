@@ -1,13 +1,14 @@
 import { EmbeddingProvider } from '@/domain/interfaces';
 import { config } from '@/config';
-import { MockEmbeddingProvider } from './MockEmbeddingProvider';
 import { OpenAIEmbeddingProvider } from './OpenAIEmbeddingProvider';
+import { LocalEmbeddingProvider } from './LocalEmbeddingProvider';
 
 export class EmbeddingProviderFactory {
   static create(): EmbeddingProvider {
-    if (config.providers.embedding.provider === 'openai') {
+    if (config.providers.embedding.provider === 'openai' && config.providers.embedding.openaiApiKey) {
       return new OpenAIEmbeddingProvider();
     }
-    return new MockEmbeddingProvider();
+    // Fall back to our free Local Embedding model (Transformers.js)
+    return new LocalEmbeddingProvider();
   }
 }
