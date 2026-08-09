@@ -129,7 +129,8 @@ function ChatContent() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 pb-48 scroll-smooth relative h-full">
+    <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 pb-48 scroll-smooth w-full">
       {messages.length === 0 ? (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -220,6 +221,7 @@ function ChatContent() {
           <div ref={endOfMessagesRef} className="h-4"></div>
         </div>
       )}
+      </div>
 
       {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 p-6 md:px-10 pb-8 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0a0a0c] dark:via-[#0a0a0c] dark:to-transparent pointer-events-none z-10">
