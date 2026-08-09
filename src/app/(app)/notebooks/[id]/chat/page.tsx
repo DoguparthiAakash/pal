@@ -18,6 +18,7 @@ function ChatContent() {
   const [role, setRole] = useState("intern");
   const [input, setInput] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +73,7 @@ function ChatContent() {
     if (!file || !activeNotebookId) return;
     
     setUploading(true);
+    setUploadStatus("Uploading file to secure storage...");
     
     try {
       const supabase = createBrowserClient();
@@ -88,7 +90,8 @@ function ChatContent() {
 
       if (uploadError) throw new Error(uploadError.message);
 
-      const res = await fetch("/api/ingest", {
+      setUploadStatus("Extracting and splitting text...");
+      const extractRes = await fetch("/api/ingest/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -100,31 +103,74 @@ function ChatContent() {
         })
       });
 
-      if (res.ok) {
-        const result = await res.json();
-        await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
+      if (!extractRes.ok) throw new Error(await extractRes.text());
+      const extractData = await extractRes.json();
+      const rawChunks: string[] = extractData.chunks;
+      const serverDocId: string = extractData.docId;
+
+      setUploadStatus("Generating AI embeddings in batches...");
+      const allEmbeddings: number[][] = [];
+      const BATCH_SIZE = 15;
+      for (let i = 0; i < rawChunks.length; i += BATCH_SIZE) {
+        setUploadStatus(`Embedding chunk batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(rawChunks.length/BATCH_SIZE)}...`);
+        const batch = rawChunks.slice(i, i + BATCH_SIZE);
+        const embedRes = await fetch("/api/ingest/embed", {
           method: "POST",
-          body: JSON.stringify({ document_id: result.document_id }),
-          headers: { "Content-Type": "application/json" }
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chunks: batch })
         });
-        
-        window.dispatchEvent(new Event('refresh-docs'));
-        
-        // Add a system message locally
-        setMessages([...messages, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          parts: [{ type: 'text', text: `✅ I have successfully uploaded and parsed \`${file.name}\`. It is now ready for questions!` }]
-        }]);
-      } else {
-        const text = await res.text();
-        alert("Upload failed: " + text);
+        if (!embedRes.ok) throw new Error(await embedRes.text());
+        const embedData = await embedRes.json();
+        allEmbeddings.push(...embedData.embeddings);
       }
+
+      setUploadStatus("Saving to Vector Database...");
+      const storeRes = await fetch("/api/ingest/store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docId: serverDocId,
+          notebookId: activeNotebookId,
+          chunks: rawChunks,
+          embeddings: allEmbeddings
+        })
+      });
+      if (!storeRes.ok) throw new Error(await storeRes.text());
+      const storeData = await storeRes.json();
+
+      setUploadStatus("Updating Notebook...");
+      await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ document_id: storeData.document_id }),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      setUploadStatus("Generating AI Notes and Mindmap...");
+      await fetch("/api/ingest/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docId: serverDocId,
+          notebookId: activeNotebookId,
+          chunks: rawChunks
+        })
+      });
+      
+      window.dispatchEvent(new Event('refresh-docs'));
+      
+      // Add a system message locally
+      setMessages([...messages, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: `✅ I have successfully uploaded and parsed \`${file.name}\`. It is now ready for questions!` }]
+      }]);
+      
     } catch (err: any) {
       alert("Upload failed: " + err.message);
     }
     
     setUploading(false);
+    setUploadStatus("");
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -226,7 +272,6 @@ function ChatContent() {
       {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 p-6 md:px-10 pb-8 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0a0a0c] dark:via-[#0a0a0c] dark:to-transparent pointer-events-none z-10">
         <div className="max-w-3xl mx-auto relative pointer-events-auto flex items-end gap-3">
-          
           <form onSubmit={(e) => {
             e.preventDefault();
             if (!input.trim() || !activeNotebookId || uploading) return;
@@ -250,6 +295,12 @@ function ChatContent() {
               className="hidden"
               accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,image/*"
             />
+            
+            {uploadStatus && (
+              <div className="absolute -top-8 left-4 text-xs text-blue-500 font-medium tracking-wide bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-md">
+                {uploadStatus}
+              </div>
+            )}
             
             <input
               className="flex-1 py-4 pr-14 bg-transparent text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none text-[15px]"

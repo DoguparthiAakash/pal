@@ -137,7 +137,7 @@ export class DocumentProcessingPipeline {
   }
 
   async embed(user: User, chunks: string[]): Promise<number[][]> {
-    return await this.observer.traceAsync('embedding_batch', user.id, async () => {
+    return await this.observer.traceAsync('embedding', user.id, async () => {
       return await this.embeddingProvider.generateEmbeddings(chunks);
     }, { chunkCount: chunks.length });
   }
