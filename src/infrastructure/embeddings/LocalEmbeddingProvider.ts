@@ -28,20 +28,21 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     }
     
     const extractor = await LocalEmbeddingProvider.extractorPromise;
-    
-    // Extractor returns a tensor
-    const output = await extractor(texts, { pooling: 'mean', normalize: true });
-    
     const embeddings: number[][] = [];
+    const batchSize = 15; // Process 15 chunks at a time to prevent Vercel Serverless OOM crashes
     
-    // If it's a single text, output.tolist() might return a 1D array or 2D array [1, 384]
-    // The library handles multiple inputs by returning a 2D array [N, 384]
-    const list = output.tolist();
-    
-    if (texts.length === 1 && list.length === this.dimension && typeof list[0] === 'number') {
-      embeddings.push(list as unknown as number[]);
-    } else {
-      embeddings.push(...(list as unknown as number[][]));
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize);
+      
+      // Extractor returns a tensor
+      const output = await extractor(batch, { pooling: 'mean', normalize: true });
+      const list = output.tolist();
+      
+      if (batch.length === 1 && list.length === this.dimension && typeof list[0] === 'number') {
+        embeddings.push(list as unknown as number[]);
+      } else {
+        embeddings.push(...(list as unknown as number[][]));
+      }
     }
 
     return embeddings;
