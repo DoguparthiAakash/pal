@@ -68,7 +68,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
       tavilyApiKey: envVars.TAVILY_API_KEY,
     },
     embedding: {
-      provider: envVars.EMBEDDING_PROVIDER || 'mock',
+      provider: envVars.EMBEDDING_PROVIDER || 'openai',
       openaiApiKey: envVars.OPENAI_API_KEY,
     },
     auth: {

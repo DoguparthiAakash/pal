@@ -3,8 +3,8 @@ import { AuthService } from '@/application/services/AuthService';
 import { DocumentProcessingPipeline } from '@/application/pipeline/DocumentProcessingPipeline';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
 import { SupabaseStorageProvider } from '@/infrastructure/storage/SupabaseStorageProvider';
-import { MockEmbeddingProvider } from '@/infrastructure/embeddings/MockEmbeddingProvider';
 import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
+import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
 import { SupabaseDocumentRepository } from '@/infrastructure/repositories/SupabaseDocumentRepository';
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
 import { config } from '@/config';
@@ -16,11 +16,13 @@ const rateLimiter = new LocalRateLimiter();
 
 const pipeline = new DocumentProcessingPipeline(
   new SupabaseStorageProvider(),
-  new MockEmbeddingProvider(),
+  EmbeddingProviderFactory.create(),
   new SupabaseVectorStore(),
   new SupabaseDocumentRepository(),
   observer
 );
+
+export const maxDuration = 60; // Set max duration for Vercel deployment
 
 export async function POST(req: NextRequest) {
   try {

@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/application/services/AuthService';
 import { RetrievalService } from '@/application/services/RetrievalService';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
-import { MockEmbeddingProvider } from '@/infrastructure/embeddings/MockEmbeddingProvider';
 import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
 import { GroqLLMProvider } from '@/infrastructure/llm/GroqLLMProvider';
 import { SupabaseConversationRepository } from '@/infrastructure/repositories/SupabaseConversationRepository';
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
 import { SupabaseKnowledgeBaseRepository } from '@/infrastructure/repositories/SupabaseKnowledgeBaseRepository';
 import { config } from '@/config';
-import { streamText } from 'ai';
+import { streamText, generateId } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
-
+import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
 const observer = new ObservabilityService();
 const authService = new AuthService();
 const rateLimiter = new LocalRateLimiter();
@@ -20,9 +19,11 @@ const kbRepo = new SupabaseKnowledgeBaseRepository();
 
 const retrievalService = new RetrievalService(
   new SupabaseVectorStore(),
-  new MockEmbeddingProvider(),
+  EmbeddingProviderFactory.create(),
   observer
 );
+
+export const maxDuration = 60; // Set max duration for Vercel deployment
 
 export async function POST(req: NextRequest) {
   try {
@@ -131,6 +132,8 @@ export async function POST(req: NextRequest) {
     });
 
     return result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      generateMessageId: () => generateId(),
       headers: {
         'X-Conversation-Id': conversationId,
       }

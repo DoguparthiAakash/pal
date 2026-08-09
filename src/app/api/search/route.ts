@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/application/services/AuthService';
 import { RetrievalService } from '@/application/services/RetrievalService';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
-import { MockEmbeddingProvider } from '@/infrastructure/embeddings/MockEmbeddingProvider';
 import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
+import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
 
 const observer = new ObservabilityService();
 const authService = new AuthService();
 
 const retrievalService = new RetrievalService(
   new SupabaseVectorStore(),
-  new MockEmbeddingProvider(),
+  EmbeddingProviderFactory.create(),
   observer
 );
 
