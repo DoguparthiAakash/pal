@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .from('chunks')
       .select('content')
       .eq('knowledge_base_id', id)
-      .limit(30);
+      .limit(6);
 
     if (chunkErr || !chunks || chunks.length === 0) {
       return NextResponse.json({ guide: 'Upload documents to generate a unified study guide.' });
@@ -59,7 +59,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const guidePrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize a unified, comprehensive "getting started" study guide. Avoid messy details, provide a cohesive overview of what to learn.\n\nCONTENT:\n${contextText}`;
 
-    const { text: guideText } = await generateText({ model, prompt: guidePrompt });
+    let guideText = 'Failed to generate guide due to rate limits. Please try again in a minute.';
+    try {
+      const { text } = await generateText({ model, prompt: guidePrompt });
+      guideText = text;
+    } catch (llmErr) {
+      console.error('LLM generation error in guide route:', llmErr);
+    }
 
     // Save as unified artifact attached to latest document
     await supabase.from('workspace_artifacts').upsert({ 

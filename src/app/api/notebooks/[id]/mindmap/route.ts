@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .from('chunks')
       .select('content')
       .eq('knowledge_base_id', id)
-      .limit(30);
+      .limit(6);
 
     if (chunkErr || !chunks || chunks.length === 0) {
       return NextResponse.json({ 
@@ -65,16 +65,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const extractJson = (text: string) => {
+      const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (mdMatch) return mdMatch[1];
       const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       return match ? match[0] : text;
     };
 
     const mindmapPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize a unified, comprehensive Mind Map bridging concepts together. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }.\n\nCONTENT:\n${contextText}`;
 
-    const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
-    const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
+    let parsedMindmap = { 
+      nodes: [{ id: '1', data: { label: 'Failed to generate mind map. Rate limit or parsing error.' }, position: { x: 250, y: 50 } }],
+      edges: []
+    };
 
-    // Save as unified artifact attached to latest document
+    try {
+      const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
+      parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
+    } catch (llmErr) {
+      console.error('LLM generation or parsing error in mindmap route:', llmErr);
+    }
+
+    // Save as unified artifact attached to latest document (even if it's the fallback, so it doesn't keep retrying and failing)
     await supabase.from('workspace_artifacts').upsert({ 
       knowledge_base_id: id, 
       document_id: latestDoc.id, 

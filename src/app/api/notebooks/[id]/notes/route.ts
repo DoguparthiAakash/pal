@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .from('chunks')
       .select('content')
       .eq('knowledge_base_id', id)
-      .limit(8);
+      .limit(6);
 
     if (chunkErr || !chunks || chunks.length === 0) {
       return NextResponse.json({ topics: [] });
