@@ -1,11 +1,14 @@
 'use client';
 
 import { createBrowserClient } from '@/infrastructure/auth/client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginForm() {
   const supabase = createBrowserClient();
+  const searchParams = useSearchParams();
+  const message = searchParams.get('message');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,11 @@ export default function LoginPage() {
 
         <div className="flex flex-col gap-4">
           <form onSubmit={handleEmailLogin} className="flex flex-col gap-4">
+            {message && !error && (
+              <div className="rounded-md bg-green-50 p-3 text-sm text-green-600 dark:bg-green-900/50 dark:text-green-200">
+                {message}
+              </div>
+            )}
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/50 dark:text-red-200">
                 {error}
@@ -127,5 +135,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }
