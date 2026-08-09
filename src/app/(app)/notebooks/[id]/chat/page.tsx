@@ -108,8 +108,7 @@ function ChatContent() {
       const rawChunks: string[] = extractData.chunks;
       const serverDocId: string = extractData.docId;
 
-      setUploadStatus("Generating AI embeddings in batches...");
-      const allEmbeddings: number[][] = [];
+      setUploadStatus("Processing and storing in batches...");
       const BATCH_SIZE = 15;
       for (let i = 0; i < rawChunks.length; i += BATCH_SIZE) {
         setUploadStatus(`Embedding chunk batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(rawChunks.length/BATCH_SIZE)}...`);
@@ -121,27 +120,27 @@ function ChatContent() {
         });
         if (!embedRes.ok) throw new Error(await embedRes.text());
         const embedData = await embedRes.json();
-        allEmbeddings.push(...embedData.embeddings);
-      }
 
-      setUploadStatus("Saving to Vector Database...");
-      const storeRes = await fetch("/api/ingest/store", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          docId: serverDocId,
-          notebookId: activeNotebookId,
-          chunks: rawChunks,
-          embeddings: allEmbeddings
-        })
-      });
-      if (!storeRes.ok) throw new Error(await storeRes.text());
-      const storeData = await storeRes.json();
+        setUploadStatus(`Saving chunk batch ${Math.floor(i/BATCH_SIZE) + 1} to Vector Database...`);
+        const isFinal = (i + BATCH_SIZE) >= rawChunks.length;
+        const storeRes = await fetch("/api/ingest/store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            docId: serverDocId,
+            notebookId: activeNotebookId,
+            chunks: batch,
+            embeddings: embedData.embeddings,
+            isFinal
+          })
+        });
+        if (!storeRes.ok) throw new Error(await storeRes.text());
+      }
 
       setUploadStatus("Updating Notebook...");
       await fetch(`/api/notebooks/${activeNotebookId}/documents`, {
         method: "POST",
-        body: JSON.stringify({ document_id: storeData.document_id }),
+        body: JSON.stringify({ document_id: serverDocId }),
         headers: { "Content-Type": "application/json" }
       });
 

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Parse JSON body
     const body = await req.json();
-    const { docId, notebookId, chunks, embeddings } = body;
+    const { docId, notebookId, chunks, embeddings, isFinal = true } = body;
 
     if (!docId || !notebookId || !chunks || !embeddings || chunks.length !== embeddings.length) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -59,9 +59,9 @@ export async function POST(req: NextRequest) {
     );
 
     // 5. Store in vector database
-    const document = await pipeline.store(user, kb, docId, chunks, embeddings);
+    const document = await pipeline.store(user, kb, docId, chunks, embeddings, isFinal);
 
-    return NextResponse.json({ document_id: document.id });
+    return NextResponse.json({ document_id: document?.id || docId, success: true });
 
   } catch (error: any) {
     console.error('Store error:', error);

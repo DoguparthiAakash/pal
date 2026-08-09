@@ -142,7 +142,7 @@ export class DocumentProcessingPipeline {
     }, { chunkCount: chunks.length });
   }
 
-  async store(user: User, kb: KnowledgeBase, docId: string, chunks: string[], embeddings: number[][]): Promise<Document> {
+  async store(user: User, kb: KnowledgeBase, docId: string, chunks: string[], embeddings: number[][], isFinal: boolean = true): Promise<Document | null> {
     try {
       // 1. Vectorize
       await this.observer.traceAsync('vector_insert', user.id, async () => {
@@ -158,14 +158,17 @@ export class DocumentProcessingPipeline {
         await this.vectorStore.upsertChunks(dbChunks);
       }, { docId, chunkCount: chunks.length });
 
-      // 2. Ready
-      const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
-      
-      // Invalidate unified artifacts so they regenerate with the new document
-      const supabase = await createServerClient();
-      await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).like('type', 'workspace-%');
+      if (isFinal) {
+        // 2. Ready
+        const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
+        
+        // Invalidate unified artifacts so they regenerate with the new document
+        const supabase = await createServerClient();
+        await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).like('type', 'workspace-%');
 
-      return updatedDoc;
+        return updatedDoc;
+      }
+      return null;
     } catch (error) {
       await this.documentRepo.update(docId, { status: 'Failed' });
       throw error;
