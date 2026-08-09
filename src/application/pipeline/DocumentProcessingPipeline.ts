@@ -96,6 +96,84 @@ export class DocumentProcessingPipeline {
     return chunks;
   }
 
+  // --- New Chunked Architecture Methods ---
+
+  async extract(user: User, kb: KnowledgeBase, filePath: string, fileName: string, mimeType: string, size: number): Promise<{ docId: string; chunks: string[] }> {
+    const docId = uuidv4();
+
+    // 1. Initial Document Record (Pending)
+    await this.documentRepo.create({
+      id: docId,
+      knowledge_base_id: kb.id,
+      user_id: user.id,
+      title: fileName,
+      original_name: fileName,
+      storage_path: filePath,
+      mime_type: mimeType,
+      size: size,
+      status: 'Extracting',
+    });
+
+    try {
+      // 2. Download from Storage
+      const buffer = await this.observer.traceAsync('download', user.id, async () => {
+        return await this.storageProvider.downloadFile(filePath);
+      }, { docId });
+
+      // 3. Extract & Chunk
+      const chunks = await this.observer.traceAsync('chunking', user.id, async () => {
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+        const ast = await officeParser.parseOffice(buffer, { fileType: ext } as any);
+        const text = ast.toText();
+        
+        return this.chunkText(text, kb.settings.chunk_size, kb.settings.chunk_overlap);
+      }, { docId });
+
+      return { docId, chunks };
+    } catch (error) {
+      await this.documentRepo.update(docId, { status: 'Failed' });
+      throw error;
+    }
+  }
+
+  async embed(user: User, chunks: string[]): Promise<number[][]> {
+    return await this.observer.traceAsync('embedding_batch', user.id, async () => {
+      return await this.embeddingProvider.generateEmbeddings(chunks);
+    }, { chunkCount: chunks.length });
+  }
+
+  async store(user: User, kb: KnowledgeBase, docId: string, chunks: string[], embeddings: number[][]): Promise<Document> {
+    try {
+      // 1. Vectorize
+      await this.observer.traceAsync('vector_insert', user.id, async () => {
+        const dbChunks: Chunk[] = chunks.map((content, i) => ({
+          id: uuidv4(),
+          document_id: docId,
+          knowledge_base_id: kb.id,
+          user_id: user.id,
+          content,
+          embedding: embeddings[i],
+        }));
+
+        await this.vectorStore.upsertChunks(dbChunks);
+      }, { docId, chunkCount: chunks.length });
+
+      // 2. Ready
+      const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
+      
+      // Invalidate unified artifacts so they regenerate with the new document
+      const supabase = await createServerClient();
+      await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).like('type', 'workspace-%');
+
+      return updatedDoc;
+    } catch (error) {
+      await this.documentRepo.update(docId, { status: 'Failed' });
+      throw error;
+    }
+  }
+
+  // --- End New Chunked Architecture Methods ---
+
   public async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[], supabase: any) {
     // We process up to first 8 chunks to avoid massive token limits
     const contextText = chunks.slice(0, 8).join('\n\n');
