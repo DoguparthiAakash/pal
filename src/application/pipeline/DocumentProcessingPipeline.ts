@@ -111,7 +111,7 @@ export class DocumentProcessingPipeline {
       storage_path: filePath,
       mime_type: mimeType,
       size: size,
-      status: 'Extracting',
+      status: 'Pending',
     });
 
     try {

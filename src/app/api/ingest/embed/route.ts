@@ -7,6 +7,7 @@ import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore
 import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
 import { SupabaseDocumentRepository } from '@/infrastructure/repositories/SupabaseDocumentRepository';
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
+import { config } from '@/config';
 
 export const maxDuration = 60; // Set max duration for Vercel deployment
 
@@ -22,7 +23,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Rate limiting check
-    if (!rateLimiter.checkLimit(user.id)) {
+    const rateLimit = await rateLimiter.checkLimit(`ingest_${user.id}`, config.app.rateLimits.ingest.limit, config.app.rateLimits.ingest.windowSeconds);
+    if (!rateLimit.success) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
     }
 
