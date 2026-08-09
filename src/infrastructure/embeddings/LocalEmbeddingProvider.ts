@@ -1,9 +1,13 @@
 import { EmbeddingProvider } from '@/domain/interfaces';
 import { env, pipeline } from '@xenova/transformers';
+import path from 'path';
+import os from 'os';
 
 // Optimization for serverless environments
 env.allowLocalModels = false; // Force download from HuggingFace Hub
 env.useBrowserCache = false;  // No browser cache in Node.js
+// Vercel serverless functions have read-only filesystems except for /tmp
+env.cacheDir = path.join(os.tmpdir(), '.cache');
 
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   private dimension: number = 384;
