@@ -18,7 +18,7 @@ export class SupabaseVectorStore implements VectorStore {
       knowledge_base_id: c.knowledge_base_id,
       user_id: c.user_id,
       content: c.content,
-      embedding: c.embedding ? `[${c.embedding.join(',')}]` : null, // pgvector format
+      embedding: c.embedding,
     }));
 
     const { error } = await this.supabase
