@@ -10,18 +10,10 @@ import { SupabaseDocumentRepository } from '@/infrastructure/repositories/Supaba
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
 import { config } from '@/config';
 
-// Initialize dependencies (In a real app with DI, this would be injected or grabbed from a container)
+// We will instantiate dependencies inside the request handler to catch any initialization errors
 const observer = new ObservabilityService();
 const authService = new AuthService();
 const rateLimiter = new LocalRateLimiter();
-
-const pipeline = new DocumentProcessingPipeline(
-  new SupabaseStorageProvider(),
-  EmbeddingProviderFactory.create(),
-  new SupabaseVectorStore(),
-  new SupabaseDocumentRepository(),
-  observer
-);
 
 export const maxDuration = 60; // Set max duration for Vercel deployment
 
@@ -38,6 +30,15 @@ export async function POST(req: NextRequest) {
     if (!rateLimit.success) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
     }
+
+    // Instantiate the pipeline here so any initialization errors are caught and returned as JSON
+    const pipeline = new DocumentProcessingPipeline(
+      new SupabaseStorageProvider(),
+      EmbeddingProviderFactory.create(),
+      new SupabaseVectorStore(),
+      new SupabaseDocumentRepository(),
+      observer
+    );
 
     // 3. Parse JSON body
     const body = await req.json();
