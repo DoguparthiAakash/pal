@@ -24,7 +24,7 @@ create table public.notes (
 
 -- match_chunks_in_notebook function
 create or replace function match_chunks_in_notebook(
-  query_embedding vector(1536),
+  query_embedding vector(384),
   match_count int,
   user_role text,
   user_id uuid,

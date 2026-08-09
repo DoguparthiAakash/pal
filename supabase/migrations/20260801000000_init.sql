@@ -23,7 +23,7 @@ create table public.chunks (
   id uuid primary key default gen_random_uuid(),
   document_id uuid not null references public.documents(id) on delete cascade,
   content text not null,
-  embedding vector(1536),
+  embedding vector(384),
   allowed_roles text[] not null default '{}',
   allowed_user_ids uuid[] not null default '{}'
 );
@@ -51,7 +51,7 @@ create index on chunks using hnsw (embedding vector_ip_ops);
 
 -- Similarity search RPC function with ACL filtering
 create or replace function match_chunks(
-  query_embedding vector(1536),
+  query_embedding vector(384),
   match_count int default 6,
   user_role text default null,
   user_id uuid default null

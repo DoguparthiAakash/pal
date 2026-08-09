@@ -146,7 +146,7 @@ DROP FUNCTION IF EXISTS public.match_chunks(vector, int, text, uuid);
 DROP FUNCTION IF EXISTS public.match_chunks_in_notebook(vector, int, text, uuid, uuid);
 
 CREATE OR REPLACE FUNCTION match_chunks_in_kb(
-  query_embedding vector(1536),
+  query_embedding vector(384),
   match_count int,
   p_knowledge_base_id uuid,
   p_user_id uuid,
@@ -188,7 +188,7 @@ $$;
 
 
 CREATE OR REPLACE FUNCTION match_chunks_in_notebook(
-  query_embedding vector(1536),
+  query_embedding vector(384),
   match_count int,
   p_notebook_id uuid,
   p_user_id uuid,
