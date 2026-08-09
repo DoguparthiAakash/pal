@@ -112,6 +112,8 @@ export class DocumentProcessingPipeline {
 
     // Helper to extract JSON from markdown output
     const extractJson = (text: string) => {
+      const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (mdMatch) return mdMatch[1];
       const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       return match ? match[0] : text;
     };
@@ -124,7 +126,7 @@ export class DocumentProcessingPipeline {
     } catch (e) { console.error('Guide generation failed', e); }
 
     // 2. Generate Notes & Links
-    const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
+    const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
     try {
       const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
       const parsedNotes = JSON.parse(extractJson(notesJsonStr));
@@ -141,7 +143,7 @@ export class DocumentProcessingPipeline {
     } catch (e) { console.error('Failed to parse notes JSON', e); }
 
     // 3. Generate Mind Map (UML-like JSON format)
-    const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }.\n\nCONTENT:\n${contextText}`;
+    const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
     try {
       const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
       const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
@@ -149,7 +151,7 @@ export class DocumentProcessingPipeline {
     } catch (e) { console.error('Failed to parse mindmap JSON', e); }
     
     // 4. Extract Memory Nodes/Edges (Obsidian graph)
-    const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format strictly as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }\n\nCONTENT:\n${contextText}`;
+    const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format strictly as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
     try {
       const { text: memoryJsonStr } = await generateText({ model, prompt: memoryPrompt });
       const parsedMemory = JSON.parse(extractJson(memoryJsonStr));

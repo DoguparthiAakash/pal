@@ -61,11 +61,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const extractJson = (text: string) => {
+      const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (mdMatch) return mdMatch[1];
       const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       return match ? match[0] : text;
     };
 
-    const notesPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize unified short bullet point notes on each key topic bridging concepts across documents. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }.\n\nCONTENT:\n${contextText}`;
+    const notesPrompt = `Based on the following context gathered from multiple documents in this workspace, synthesize unified short bullet point notes on each key topic bridging concepts across documents. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
 
     let parsedNotes = { topics: [] };
     try {
