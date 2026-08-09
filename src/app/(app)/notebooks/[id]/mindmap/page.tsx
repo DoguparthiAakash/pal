@@ -15,8 +15,42 @@ export default function MindMapPage() {
     fetch(`/api/notebooks/${id}/mindmap`, { method: 'POST' })
       .then(res => res.json())
       .then(data => {
-        setNodes(data.nodes || []);
-        setEdges(data.edges || []);
+        const COLORS = [
+          { bg: '#3b82f6', text: '#ffffff', border: '#2563eb' }, // Blue
+          { bg: '#10b981', text: '#ffffff', border: '#059669' }, // Emerald
+          { bg: '#f59e0b', text: '#ffffff', border: '#d97706' }, // Amber
+          { bg: '#ec4899', text: '#ffffff', border: '#db2777' }, // Pink
+          { bg: '#8b5cf6', text: '#ffffff', border: '#7c3aed' }, // Violet
+          { bg: '#06b6d4', text: '#ffffff', border: '#0891b2' }, // Cyan
+        ];
+
+        const coloredNodes = (data.nodes || []).map((node: Node, i: number) => {
+          const theme = COLORS[i % COLORS.length];
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              background: theme.bg,
+              color: theme.text,
+              borderColor: theme.border,
+              borderWidth: '2px',
+              borderRadius: '12px',
+              padding: '12px 20px',
+              fontWeight: 600,
+              fontSize: '14px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            }
+          };
+        });
+
+        const styledEdges = (data.edges || []).map((edge: Edge) => ({
+          ...edge,
+          animated: true,
+          style: { stroke: '#9ca3af', strokeWidth: 2 }
+        }));
+
+        setNodes(coloredNodes);
+        setEdges(styledEdges);
         setLoading(false);
       });
   }, [id]);
