@@ -2,7 +2,7 @@
 
 -- Memory Nodes for Obsidian-like Knowledge Graph
 CREATE TABLE public.memory_nodes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     knowledge_base_id UUID NOT NULL REFERENCES public.knowledge_bases(id) ON DELETE CASCADE,
     document_id UUID REFERENCES public.documents(id) ON DELETE CASCADE,
     label TEXT NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE public.memory_nodes (
 
 -- Memory Edges
 CREATE TABLE public.memory_edges (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_node_id UUID NOT NULL REFERENCES public.memory_nodes(id) ON DELETE CASCADE,
     target_node_id UUID NOT NULL REFERENCES public.memory_nodes(id) ON DELETE CASCADE,
     relationship_type TEXT NOT NULL, -- e.g., 'relates_to', 'part_of', 'causes'
@@ -23,7 +23,7 @@ CREATE TABLE public.memory_edges (
 
 -- Workspace Artifacts for caching generated Mind Maps, Guides, Notes
 CREATE TABLE public.workspace_artifacts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     knowledge_base_id UUID NOT NULL REFERENCES public.knowledge_bases(id) ON DELETE CASCADE,
     document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
     type TEXT NOT NULL, -- 'mindmap', 'guide', 'notes'
