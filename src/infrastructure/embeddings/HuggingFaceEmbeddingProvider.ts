@@ -41,27 +41,44 @@ export class HuggingFaceEmbeddingProvider implements EmbeddingProvider {
         headers['Authorization'] = `Bearer ${this.hfToken}`;
       }
       
+      const batchSize = 10;
+      const allFreshEmbeddings: number[][] = [];
+
       try {
-        const response = await fetch(this.modelUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ inputs: uncachedTexts }),
-        });
+        for (let i = 0; i < uncachedTexts.length; i += batchSize) {
+          const batchTexts = uncachedTexts.slice(i, i + batchSize);
+          
+          const response = await fetch(this.modelUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ inputs: batchTexts }),
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HuggingFace API Error (${response.status}): ${errorText}`);
-        }
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HuggingFace API Error (${response.status}): ${errorText}`);
+          }
 
-        const freshEmbeddings = await response.json();
-        
-        // HF API returns arrays of arrays
-        if (!Array.isArray(freshEmbeddings)) {
-          throw new Error('Unexpected response format from HuggingFace');
+          const batchEmbeddings = await response.json();
+          
+          // HF API returns arrays of arrays
+          if (!Array.isArray(batchEmbeddings)) {
+            throw new Error('Unexpected response format from HuggingFace');
+          }
+          
+          // Sometimes HF returns [batchSize, seqLength, hiddenSize] for feature extraction,
+          // but for Xenova models we usually expect [batchSize, hiddenSize] if pooled properly.
+          // Let's ensure we flatten or extract the embeddings correctly.
+          if (batchTexts.length === 1 && !Array.isArray(batchEmbeddings[0])) {
+             // single string returned flat array
+             allFreshEmbeddings.push(batchEmbeddings as unknown as number[]);
+          } else {
+             allFreshEmbeddings.push(...batchEmbeddings);
+          }
         }
 
         // Write fresh embeddings to cache (fire-and-forget) and fill results
-        freshEmbeddings.forEach((embedding: number[], idx: number) => {
+        allFreshEmbeddings.forEach((embedding: number[], idx: number) => {
           const originalIndex = uncachedIndices[idx];
           results[originalIndex] = embedding;
           const text = texts[originalIndex];
