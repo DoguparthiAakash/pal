@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Bot, PanelLeftClose, PanelLeftOpen, MessageSquare, FileText, Map,
   AlignLeft, Upload, Share2, BookOpen, StickyNote, BrainCircuit, Trash2,
-  FolderOpen, X, CheckCircle, AlertCircle, Loader2, Cloud, HardDrive, FlaskConical
+  FolderOpen, X, CheckCircle, AlertCircle, Loader2, Cloud, HardDrive, FlaskConical, Presentation, GraduationCap, Headphones
 } from 'lucide-react';
 import { createBrowserClient } from '@/infrastructure/auth/client';
 
@@ -402,8 +402,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <Link href={`/notebooks/${activeNotebookId}/memory`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/memory') ? 'bg-gray-200 dark:bg-white/10 text-black dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                 <BrainCircuit size={14} /> Memory
               </Link>
-              <Link href={`/notebooks/${activeNotebookId}/research`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 col-span-2 ${pathname.includes('/research') ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+              <Link href={`/notebooks/${activeNotebookId}/research`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/research') ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                 <FlaskConical size={14} /> Research Lab
+              </Link>
+              <Link href={`/notebooks/${activeNotebookId}/briefing`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/briefing') ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <Presentation size={14} /> Briefing
+              </Link>
+              <Link href={`/notebooks/${activeNotebookId}/study`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 ${pathname.includes('/study') ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <GraduationCap size={14} /> Study
+              </Link>
+              <Link href={`/notebooks/${activeNotebookId}/podcast`} className={`p-2 text-xs rounded-lg font-medium transition-colors flex items-center gap-1.5 col-span-2 ${pathname.includes('/podcast') ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
+                <Headphones size={14} /> Audio Overview
               </Link>
             </div>
           </div>

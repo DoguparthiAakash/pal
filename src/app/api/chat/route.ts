@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Parse request
-    const { messages, conversation_id, notebookId } = await req.json();
+    const { messages, conversation_id, notebookId, panelMode } = await req.json();
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 });
     }
@@ -161,7 +161,19 @@ export async function POST(req: NextRequest) {
     const contextText = chunks.map((c: any) => c.content).join('\n\n');
 
     // 9. System prompt & Generation
-    const systemPrompt = kb.settings.system_prompt || `You are an intelligent assistant. Use the following retrieved context to answer the user's question accurately. If you don't know the answer, just say so.\n\nContext:\n${contextText}`;
+    let systemPrompt = kb.settings.system_prompt || `You are an intelligent assistant. Use the following retrieved context to answer the user's question accurately. If you don't know the answer, just say so.\n\nContext:\n${contextText}`;
+
+    if (panelMode) {
+      systemPrompt = `You are a panel of three experts:
+1. **The Analyst**: Focuses on data, logic, and objective facts.
+2. **The Skeptic**: Points out flaws, risks, missing information, and counter-arguments.
+3. **The Visionary**: Looks at the big picture, future implications, and creative possibilities.
+
+Use the following retrieved context to address the user's question from all three perspectives.
+Format your response clearly with headings for each expert.
+
+Context:\n${contextText}`;
+    }
 
     const result = streamText({
       model: createOpenRouterModel('qwen/qwen3-8b:free'),

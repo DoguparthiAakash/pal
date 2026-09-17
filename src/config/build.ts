@@ -133,11 +133,12 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     if (!config.providers.storage.supabaseServiceRoleKey) {
       throw new ConfigError('SUPABASE_SERVICE_ROLE_KEY is required in production');
     }
+    // Log missing keys but do not throw, so middleware doesn't crash
     if (config.providers.llm.provider === 'groq' && !config.providers.llm.groqApiKey) {
-      throw new ConfigError('GROQ_API_KEY is required in production when using groq');
+      console.warn('GROQ_API_KEY is missing in production');
     }
     if (config.providers.llm.provider === 'openrouter' && !config.providers.llm.openrouterApiKey) {
-      throw new ConfigError('OPENROUTER_API_KEY is required in production when using openrouter');
+      console.warn('OPENROUTER_API_KEY is missing in production');
     }
   }
 

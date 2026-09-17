@@ -2,7 +2,7 @@
 import { Suspense, useState, useRef, useMemo, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { Send, Search, Paperclip, History, X, MessageSquare, Loader2 } from 'lucide-react';
+import { Send, Search, Paperclip, History, X, MessageSquare, Loader2, Users } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -17,6 +17,7 @@ function ChatContent() {
   const conversationId = searchParams.get('conversationId');
   const [role, setRole] = useState("intern");
   const [input, setInput] = useState("");
+  const [panelMode, setPanelMode] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
@@ -24,8 +25,8 @@ function ChatContent() {
 
   const transport = useMemo(() => new DefaultChatTransport({
     api: "/api/chat",
-    body: { userRole: role, notebookId: activeNotebookId }
-  }), [role, activeNotebookId]);
+    body: { userRole: role, notebookId: activeNotebookId, panelMode }
+  }), [role, activeNotebookId, panelMode]);
 
   const { messages, status, sendMessage, setMessages } = useChat({
     transport
@@ -282,10 +283,18 @@ function ChatContent() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="pl-4 pr-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+              className="pl-4 pr-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
               title="Attach File"
             >
               {uploading ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelMode(!panelMode)}
+              className={`px-2 transition-colors flex items-center justify-center ${panelMode ? 'text-indigo-500' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+              title={panelMode ? "Panel Mode: ON (Analyst, Skeptic, Visionary)" : "Panel Mode: OFF"}
+            >
+              <Users size={20} />
             </button>
             <input
               type="file"
