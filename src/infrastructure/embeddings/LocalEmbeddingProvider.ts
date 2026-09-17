@@ -1,32 +1,31 @@
 import { EmbeddingProvider } from '@/domain/interfaces';
-import { env, pipeline } from '@xenova/transformers';
 import path from 'path';
 import os from 'os';
 import { SupabaseCacheService } from '@/infrastructure/cache/SupabaseCacheService';
-
-// Optimization for serverless environments
-env.allowLocalModels = false; // Force download from HuggingFace Hub
-env.useBrowserCache = false;  // No browser cache in Node.js
-// Vercel serverless functions have read-only filesystems except for /tmp
-env.cacheDir = path.join(os.tmpdir(), '.cache');
 
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   private dimension: number = 384;
   private static extractorPromise: Promise<any> | null = null;
 
-  constructor() {
-    // Lazy load the pipeline so we don't block initialization
+  private async getExtractor() {
     if (!LocalEmbeddingProvider.extractorPromise) {
-      LocalEmbeddingProvider.extractorPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-        quantized: true, // Uses less memory and downloads faster
-      });
+      LocalEmbeddingProvider.extractorPromise = (async () => {
+        const { env, pipeline } = await import('@xenova/transformers');
+        
+        // Optimization for serverless environments
+        env.allowLocalModels = false;
+        env.useBrowserCache = false;
+        env.cacheDir = path.join(os.tmpdir(), '.cache');
+
+        return pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+          quantized: true,
+        });
+      })();
     }
+    return LocalEmbeddingProvider.extractorPromise;
   }
 
   async generateEmbeddings(texts: string[]): Promise<number[][]> {
-    if (!LocalEmbeddingProvider.extractorPromise) {
-      throw new Error('Pipeline not initialized');
-    }
 
     // ── Cache-first: resolve as many texts as possible from embedding_cache ──
     const results: (number[] | null)[] = new Array(texts.length).fill(null);
@@ -48,7 +47,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     // ── Run ONNX model only on uncached texts ─────────────────────────────
     if (uncachedIndices.length > 0) {
       const uncachedTexts = uncachedIndices.map(i => texts[i]);
-      const extractor = await LocalEmbeddingProvider.extractorPromise;
+      const extractor = await this.getExtractor();
       const batchSize = 15; // Process 15 chunks at a time to prevent Vercel Serverless OOM crashes
 
       const freshEmbeddings: number[][] = [];
