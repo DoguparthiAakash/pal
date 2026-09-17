@@ -23,7 +23,9 @@ export async function middleware(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/register') &&
     !request.nextUrl.pathname.startsWith('/auth') &&
-    !request.nextUrl.pathname.startsWith('/_next')
+    !request.nextUrl.pathname.startsWith('/_next') &&
+    request.nextUrl.pathname !== '/privacy-policy' &&
+    request.nextUrl.pathname !== '/terms-of-service'
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -50,6 +52,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * Feel free to modify this pattern to include more paths.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html|txt)$).*)',
   ],
 }
