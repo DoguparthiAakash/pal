@@ -40,6 +40,34 @@ export async function POST(req: NextRequest) {
     const storageProvider = new SupabaseStorageProvider();
     const { path } = await storageProvider.uploadFile(storagePath, buffer);
 
+    // Background Drive Sync
+    const { createServerClient } = await import('@/infrastructure/auth/server');
+    const supabase = await createServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session?.provider_token) {
+      const { DriveSyncService } = await import('@/infrastructure/storage/DriveSyncService');
+      const driveService = new DriveSyncService();
+      const token = session.provider_token;
+      const fName = file.name;
+      const mime = file.type || 'application/octet-stream';
+      
+      // Fire and forget
+      (async () => {
+        try {
+          const exists = await driveService.checkFileExists(fName, token);
+          if (!exists) {
+            console.log(`Syncing ${fName} to Google Drive...`);
+            await driveService.uploadFile(buffer, fName, mime, token);
+          } else {
+            console.log(`File ${fName} already exists in Google Drive. Skipping.`);
+          }
+        } catch (e) {
+          console.error('Drive sync failed in background:', e);
+        }
+      })();
+    }
+
     return NextResponse.json({
       filePath: path,
       fileName: file.name,

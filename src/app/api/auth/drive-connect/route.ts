@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     provider: 'google',
     options: {
       redirectTo: `${origin}/auth/callback?next=/notebooks/${notebookId}/chat&drive=true`,
-      scopes: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
+      scopes: 'openid email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
