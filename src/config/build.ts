@@ -71,6 +71,7 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     embedding: {
       provider: envVars.EMBEDDING_PROVIDER || 'openai',
       openaiApiKey: envVars.OPENAI_API_KEY,
+      huggingFaceToken: envVars.HUGGINGFACE_TOKEN,
     },
     auth: {
       provider: envVars.AUTH_PROVIDER || 'supabase',

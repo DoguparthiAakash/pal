@@ -9,7 +9,8 @@ import { generateWithOpenRouter } from '@/infrastructure/llm/OpenRouterLLMProvid
 import { SupabaseCacheService } from '@/infrastructure/cache/SupabaseCacheService';
 
 // Document Parsing
-import officeParser from 'officeparser';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 export class DocumentProcessingPipeline {
   constructor(
@@ -46,8 +47,17 @@ export class DocumentProcessingPipeline {
       // 3. Extract & Chunk
       const chunks = await this.observer.traceAsync('chunking', user.id, async () => {
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
-        const ast = await officeParser.parseOffice(buffer, { fileType: ext, tempFilesLocation: '/tmp' } as any);
-        const text = ast.toText();
+        let text = '';
+        if (ext === 'pdf') {
+          const data = await pdfParse(buffer);
+          text = data.text;
+        } else if (ext === 'docx') {
+          const result = await mammoth.extractRawText({ buffer });
+          text = result.value;
+        } else {
+          // Fallback for txt, csv, etc.
+          text = buffer.toString('utf-8');
+        }
         
         return this.chunkText(text, kb.settings.chunk_size, kb.settings.chunk_overlap);
       }, { docId });
@@ -126,8 +136,17 @@ export class DocumentProcessingPipeline {
       // 3. Extract & Chunk
       const chunks = await this.observer.traceAsync('chunking', user.id, async () => {
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
-        const ast = await officeParser.parseOffice(buffer, { fileType: ext, tempFilesLocation: '/tmp' } as any);
-        const text = ast.toText();
+        let text = '';
+        if (ext === 'pdf') {
+          const data = await pdfParse(buffer);
+          text = data.text;
+        } else if (ext === 'docx') {
+          const result = await mammoth.extractRawText({ buffer });
+          text = result.value;
+        } else {
+          // Fallback for txt, csv, etc.
+          text = buffer.toString('utf-8');
+        }
         
         return this.chunkText(text, kb.settings.chunk_size, kb.settings.chunk_overlap);
       }, { docId });

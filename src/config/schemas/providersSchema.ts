@@ -21,8 +21,9 @@ export const LLMConfigSchema = z.object({
 });
 
 export const EmbeddingConfigSchema = z.object({
-  provider: z.enum(['openai', 'ollama', 'mock']).default('openai'),
+  provider: z.enum(['openai', 'ollama', 'mock', 'huggingface']).default('huggingface'),
   openaiApiKey: z.string().optional(),
+  huggingFaceToken: z.string().optional(),
 });
 
 export const AuthConfigSchema = z.object({
