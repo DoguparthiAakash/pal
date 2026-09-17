@@ -62,9 +62,10 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
       provider: envVars.VECTOR_STORE_PROVIDER || 'supabase',
     },
     llm: {
-      provider: envVars.LLM_PROVIDER || 'groq',
+      provider: envVars.LLM_PROVIDER || 'openrouter',
       groqApiKey: envVars.GROQ_API_KEY,
       openaiApiKey: envVars.OPENAI_API_KEY,
+      openrouterApiKey: envVars.OPENROUTER_API_KEY,
       tavilyApiKey: envVars.TAVILY_API_KEY,
     },
     embedding: {
@@ -134,6 +135,9 @@ export function buildConfig(envVars: NodeJS.ProcessEnv = process.env): Config {
     }
     if (config.providers.llm.provider === 'groq' && !config.providers.llm.groqApiKey) {
       throw new ConfigError('GROQ_API_KEY is required in production when using groq');
+    }
+    if (config.providers.llm.provider === 'openrouter' && !config.providers.llm.openrouterApiKey) {
+      throw new ConfigError('OPENROUTER_API_KEY is required in production when using openrouter');
     }
   }
 

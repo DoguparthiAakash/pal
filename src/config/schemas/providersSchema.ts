@@ -12,9 +12,10 @@ export const VectorStoreConfigSchema = z.object({
 });
 
 export const LLMConfigSchema = z.object({
-  provider: z.enum(['groq', 'openai', 'ollama']).default('groq'),
+  provider: z.enum(['groq', 'openai', 'ollama', 'openrouter']).default('openrouter'),
   groqApiKey: z.string().optional(),
   openaiApiKey: z.string().optional(),
+  openrouterApiKey: z.string().optional(),
   ollamaBaseUrl: z.string().optional(),
   tavilyApiKey: z.string().optional(),
 });

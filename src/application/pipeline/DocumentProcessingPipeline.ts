@@ -2,11 +2,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { StorageProvider, EmbeddingProvider, VectorStore, DocumentRepository } from '@/domain/interfaces';
 import { KnowledgeBase, User, Document, Chunk } from '@/domain/entities';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
-import { generateText } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
 import { config } from '@/config';
 import { createServerClient } from '@/infrastructure/auth/server';
 import { TavilyClient } from '@/infrastructure/tavily/TavilyClient';
+import { generateWithOpenRouter } from '@/infrastructure/llm/OpenRouterLLMProvider';
+import { SupabaseCacheService } from '@/infrastructure/cache/SupabaseCacheService';
 
 // Document Parsing
 import officeParser from 'officeparser';
@@ -73,10 +73,13 @@ export class DocumentProcessingPipeline {
 
       // 7. Ready
       const updatedDoc = await this.documentRepo.update(docId, { status: 'Ready' });
-      
+
       // Invalidate unified artifacts so they regenerate with the new document
       const supabase = await createServerClient();
       await supabase.from('workspace_artifacts').delete().eq('knowledge_base_id', kb.id).like('type', 'workspace-%');
+
+      // Invalidate semantic query cache — new doc changes available context
+      SupabaseCacheService.invalidateKBCache(kb.id).catch(() => {});
 
       return updatedDoc;
 
@@ -178,18 +181,27 @@ export class DocumentProcessingPipeline {
   // --- End New Chunked Architecture Methods ---
 
   public async generateArtifacts(user: User, kb: KnowledgeBase, docId: string, chunks: string[], supabase: any) {
-    // We process up to first 8 chunks to avoid massive token limits
-    const contextText = chunks.slice(0, 8).join('\n\n');
-    
-    // Default to groq if available, otherwise check openai
-    let model;
-    if (config.providers.llm.provider === 'groq' && config.providers.llm.groqApiKey) {
-      const groq = createGroq({ apiKey: config.providers.llm.groqApiKey });
-      model = groq('llama-3.1-8b-instant');
-    } else {
-      console.log('No supported LLM provider configured for artifact generation.');
+    // Guard: skip if all 4 artifact types already exist for this document
+    const { data: existing } = await supabase
+      .from('workspace_artifacts')
+      .select('type')
+      .eq('document_id', docId);
+    const existingTypes = new Set((existing || []).map((a: any) => a.type));
+    const ARTIFACT_TYPES = ['guide', 'notes', 'mindmap'];
+    const allExist = ARTIFACT_TYPES.every(t => existingTypes.has(t));
+    if (allExist) {
+      console.log(`Artifacts already exist for doc ${docId} — skipping generation.`);
       return;
     }
+
+    const apiKey = config.providers.llm.openrouterApiKey || config.providers.llm.groqApiKey || '';
+    if (!apiKey) {
+      console.log('No LLM API key configured for artifact generation.');
+      return;
+    }
+
+    // We process up to first 8 chunks to avoid massive token limits
+    const contextText = chunks.slice(0, 8).join('\n\n');
 
     // Helper to extract JSON from markdown output
     const extractJson = (text: string) => {
@@ -199,50 +211,58 @@ export class DocumentProcessingPipeline {
       return match ? match[0] : text;
     };
 
-    // 1. Generate Guide
-    const guidePrompt = `Based on the following document context, generate a "getting started" study guide. Avoid messy details, provide a simple overview of where to start and what to learn.\n\nCONTENT:\n${contextText}`;
-    try {
-      const { text: guideText } = await generateText({ model, prompt: guidePrompt });
-      await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'guide', content: { text: guideText } });
-    } catch (e) { console.error('Guide generation failed', e); }
+    // 1. Generate Guide (skip if already exists)
+    if (!existingTypes.has('guide')) {
+      const guidePrompt = `Based on the following document context, generate a "getting started" study guide. Avoid messy details, provide a simple overview of where to start and what to learn.\n\nCONTENT:\n${contextText}`;
+      try {
+        const guideText = await generateWithOpenRouter(guidePrompt, apiKey);
+        await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'guide', content: { text: guideText } });
+      } catch (e) { console.error('Guide generation failed', e); }
+    }
 
-    // 2. Generate Notes & Links
-    const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
-    try {
-      const { text: notesJsonStr } = await generateText({ model, prompt: notesPrompt });
-      const parsedNotes = JSON.parse(extractJson(notesJsonStr));
-      const tavily = new TavilyClient();
-      for (const t of parsedNotes.topics || []) {
-        try {
-          t.links = await tavily.search(t.topic + ' ' + t.points[0], 3);
-        } catch (linkError) {
-          console.error('Tavily search failed for topic', t.topic, linkError);
-          t.links = [];
+    // 2. Generate Notes & Links (skip if already exists)
+    if (!existingTypes.has('notes')) {
+      const notesPrompt = `Based on the following document context, generate short bullet point notes on each key topic and main points underneath it. Format strictly as JSON with { "topics": [{ "topic": "Name", "points": ["p1"] }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
+      try {
+        const notesJsonStr = await generateWithOpenRouter(notesPrompt, apiKey);
+        const parsedNotes = JSON.parse(extractJson(notesJsonStr));
+        const tavily = new TavilyClient();
+        for (const t of parsedNotes.topics || []) {
+          try {
+            t.links = await tavily.search(t.topic + ' ' + t.points[0], 3);
+          } catch (linkError) {
+            console.error('Tavily search failed for topic', t.topic, linkError);
+            t.links = [];
+          }
         }
-      }
-      await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'notes', content: parsedNotes });
-    } catch (e) { console.error('Failed to parse notes JSON', e); }
+        await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'notes', content: parsedNotes });
+      } catch (e) { console.error('Failed to parse notes JSON', e); }
+    }
 
-    // 3. Generate Mind Map (UML-like JSON format)
-    const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
-    try {
-      const { text: mindmapJsonStr } = await generateText({ model, prompt: mindmapPrompt });
-      const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
-      await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'mindmap', content: parsedMindmap });
-    } catch (e) { console.error('Failed to parse mindmap JSON', e); }
+    // 3. Generate Mind Map (skip if already exists)
+    if (!existingTypes.has('mindmap')) {
+      const mindmapPrompt = `Based on the context, generate a Mind Map splitting topics and sub-topics. Format strictly as JSON matching React Flow nodes/edges: { "nodes": [{ "id": "1", "data": { "label": "Topic" }, "position": { "x": 0, "y": 0 } }], "edges": [{ "id": "e1-2", "source": "1", "target": "2" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
+      try {
+        const mindmapJsonStr = await generateWithOpenRouter(mindmapPrompt, apiKey);
+        const parsedMindmap = JSON.parse(extractJson(mindmapJsonStr));
+        await supabase.from('workspace_artifacts').upsert({ knowledge_base_id: kb.id, document_id: docId, type: 'mindmap', content: parsedMindmap });
+      } catch (e) { console.error('Failed to parse mindmap JSON', e); }
+    }
     
-    // 4. Extract Memory Nodes/Edges (Obsidian graph)
-    const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format strictly as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
-    try {
-      const { text: memoryJsonStr } = await generateText({ model, prompt: memoryPrompt });
-      const parsedMemory = JSON.parse(extractJson(memoryJsonStr));
-      for (const node of parsedMemory.nodes || []) {
-        await supabase.from('memory_nodes').upsert({ id: node.id || uuidv4(), knowledge_base_id: kb.id, document_id: docId, label: node.label, type: node.type || 'concept' });
-      }
-      for (const edge of parsedMemory.edges || []) {
-        await supabase.from('memory_edges').insert({ source_node_id: edge.source, target_node_id: edge.target, relationship_type: edge.relationship || 'relates_to' });
-      }
-    } catch (e) { console.error('Failed to parse memory graph JSON', e); }
+    // 4. Extract Memory Nodes/Edges (Obsidian graph) (skip if already exists)
+    if (!existingTypes.has('memory')) {
+      const memoryPrompt = `Extract key entities, concepts, and their relationships from the context. Format strictly as JSON: { "nodes": [{ "id": "uuid", "label": "Concept", "type": "concept" }], "edges": [{ "source": "uuid1", "target": "uuid2", "relationship": "relates_to" }] }. Output EXACTLY ONE valid JSON object inside a \`\`\`json code block. Do not add any conversational text.\n\nCONTENT:\n${contextText}`;
+      try {
+        const memoryJsonStr = await generateWithOpenRouter(memoryPrompt, apiKey);
+        const parsedMemory = JSON.parse(extractJson(memoryJsonStr));
+        for (const node of parsedMemory.nodes || []) {
+          await supabase.from('memory_nodes').upsert({ id: node.id || uuidv4(), knowledge_base_id: kb.id, document_id: docId, label: node.label, type: node.type || 'concept' });
+        }
+        for (const edge of parsedMemory.edges || []) {
+          await supabase.from('memory_edges').insert({ source_node_id: edge.source, target_node_id: edge.target, relationship_type: edge.relationship || 'relates_to' });
+        }
+      } catch (e) { console.error('Failed to parse memory graph JSON', e); }
+    }
   }
 }
 

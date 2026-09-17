@@ -3,25 +3,41 @@ import { AuthService } from '@/application/services/AuthService';
 import { RetrievalService } from '@/application/services/RetrievalService';
 import { ObservabilityService } from '@/application/services/ObservabilityService';
 import { SupabaseVectorStore } from '@/infrastructure/vector/SupabaseVectorStore';
-import { GroqLLMProvider } from '@/infrastructure/llm/GroqLLMProvider';
 import { SupabaseConversationRepository } from '@/infrastructure/repositories/SupabaseConversationRepository';
 import { LocalRateLimiter } from '@/infrastructure/rate-limit/LocalRateLimiter';
 import { SupabaseKnowledgeBaseRepository } from '@/infrastructure/repositories/SupabaseKnowledgeBaseRepository';
+import { SupabaseCacheService } from '@/infrastructure/cache/SupabaseCacheService';
+import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
 import { config } from '@/config';
 import { streamText, generateId } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
-import { EmbeddingProviderFactory } from '@/infrastructure/embeddings/EmbeddingProviderFactory';
+import { createOpenAI } from '@ai-sdk/openai';
+
 const observer = new ObservabilityService();
 const authService = new AuthService();
 const rateLimiter = new LocalRateLimiter();
 const conversationRepo = new SupabaseConversationRepository();
 const kbRepo = new SupabaseKnowledgeBaseRepository();
+const embeddingProvider = EmbeddingProviderFactory.create();
 
 const retrievalService = new RetrievalService(
   new SupabaseVectorStore(),
-  EmbeddingProviderFactory.create(),
+  embeddingProvider,
   observer
 );
+
+// OpenRouter uses OpenAI-compatible API — free OSS models available without credits
+function createOpenRouterModel(modelId = 'qwen/qwen3-8b:free') {
+  const apiKey = config.providers.llm.openrouterApiKey || config.providers.llm.groqApiKey || '';
+  const openrouter = createOpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey,
+    headers: {
+      'HTTP-Referer': 'https://pal.app',
+      'X-Title': 'PAL',
+    },
+  });
+  return openrouter(modelId);
+}
 
 export const maxDuration = 60; // Set max duration for Vercel deployment
 
@@ -56,10 +72,7 @@ export async function POST(req: NextRequest) {
       if (!content && Array.isArray(m.parts)) {
         content = m.parts.map((p: any) => p.text || '').join('');
       }
-      return {
-        role: m.role,
-        content: content || ''
-      };
+      return { role: m.role, content: content || '' };
     });
 
     // 4. Get KB
@@ -69,12 +82,12 @@ export async function POST(req: NextRequest) {
     } else {
       kb = await authService.getDefaultKnowledgeBase(user.id);
     }
-    
+
     if (!kb) {
       return NextResponse.json({ error: 'Knowledge Base not found' }, { status: 400 });
     }
 
-    // 5. Verify conversation ownership (if exists)
+    // 5. Verify/create conversation
     let conversationId = conversation_id;
     if (conversationId) {
       const conv = await conversationRepo.findById(conversationId);
@@ -82,7 +95,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Conversation not found or unauthorized' }, { status: 403 });
       }
     } else {
-      // Create new conversation
       const newConv = await conversationRepo.create({
         knowledge_base_id: kb.id,
         user_id: user.id,
@@ -91,42 +103,106 @@ export async function POST(req: NextRequest) {
       conversationId = newConv.id;
     }
 
-    // 6. Retrieve context
-    const chunks = await retrievalService.retrieveContext(latestMessage, user.id, kb);
-    const contextText = chunks.map(c => c.content).join('\n\n');
+    // ── 6. Generate query embedding (embedding cache applied inside provider) ──
+    const [queryEmbedding] = await embeddingProvider.generateEmbeddings([latestMessage]);
 
-    // 7. System prompt & Generation
+    // ── 7. Semantic Cache Check ────────────────────────────────────────────
+    // If a very similar question was answered recently, stream the cached answer
+    const cacheHit = await SupabaseCacheService.getCachedResponse(
+      queryEmbedding,
+      kb.id,
+      user.id
+    );
+
+    if (cacheHit && cacheHit.similarity >= 0.92) {
+      // Save conversation messages for history (fire-and-forget)
+      conversationRepo.addMessage({
+        conversation_id: conversationId,
+        role: 'user',
+        content: latestMessage,
+        sources: { document_ids: [], chunk_ids: [], scores: [] },
+        provider_used: 'cache',
+      }).catch(() => {});
+      conversationRepo.addMessage({
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: cacheHit.response_text,
+        provider_used: 'cache',
+      }).catch(() => {});
+
+      // Stream the cached response with a cache indicator header
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          // Emit as text/event-stream in Vercel AI SDK UIMessage format
+          const chunks = cacheHit.response_text.match(/.{1,50}/g) || [];
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk)}\n`));
+          }
+          controller.enqueue(encoder.encode(`e:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n`));
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'X-Conversation-Id': conversationId,
+          'X-Cache-Hit': 'true',
+          'X-Cache-Similarity': String(cacheHit.similarity.toFixed(3)),
+        },
+      });
+    }
+
+    // ── 8. Vector retrieval using normal retrieval (embedding cached inside provider) ──
+    const chunks = await retrievalService.retrieveContext(latestMessage, user.id, kb);
+
+    const contextText = chunks.map((c: any) => c.content).join('\n\n');
+
+    // 9. System prompt & Generation
     const systemPrompt = kb.settings.system_prompt || `You are an intelligent assistant. Use the following retrieved context to answer the user's question accurately. If you don't know the answer, just say so.\n\nContext:\n${contextText}`;
 
-    const groq = createGroq({ apiKey: config.providers.llm.groqApiKey || '' });
-
     const result = streamText({
-      model: groq('llama-3.1-8b-instant'),
+      model: createOpenRouterModel('qwen/qwen3-8b:free'),
       system: systemPrompt,
       messages: coreMessages,
       temperature: kb.settings.temperature ?? 0.7,
       onFinish: async ({ text }) => {
-        // Fire and forget saving the messages to DB asynchronously
         try {
-          await conversationRepo.addMessage({
-            conversation_id: conversationId,
-            role: 'user',
-            content: latestMessage,
-            sources: {
-              document_ids: Array.from(new Set(chunks.map(c => c.document_id))),
-              chunk_ids: chunks.map(c => c.id),
-              scores: chunks.map(c => (c as any).similarity || 0),
-            },
-            provider_used: kb.settings.llm_provider
-          });
-          await conversationRepo.addMessage({
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: text,
-            provider_used: kb.settings.llm_provider
-          });
+          // Save messages to DB
+          await Promise.all([
+            conversationRepo.addMessage({
+              conversation_id: conversationId,
+              role: 'user',
+              content: latestMessage,
+              sources: {
+                document_ids: Array.from(new Set(chunks.map((c: any) => c.document_id))),
+                chunk_ids: chunks.map((c: any) => c.id),
+                scores: chunks.map((c: any) => (c as any).similarity || 0),
+              },
+              provider_used: kb.settings.llm_provider,
+            }),
+            conversationRepo.addMessage({
+              conversation_id: conversationId,
+              role: 'assistant',
+              content: text,
+              provider_used: kb.settings.llm_provider,
+            }),
+          ]);
+
+          // Write to semantic cache (fire-and-forget, non-fatal)
+          SupabaseCacheService.setCachedResponse({
+            queryText: latestMessage,
+            queryEmbedding,
+            responseText: text,
+            contextChunkIds: chunks.map((c: any) => c.id),
+            knowledgeBaseId: kb.id,
+            userId: user.id,
+          }).catch(() => {});
+
         } catch (e) {
-          console.error("Failed to save messages", e);
+          console.error('Failed to save messages', e);
         }
       }
     });
@@ -136,6 +212,7 @@ export async function POST(req: NextRequest) {
       generateMessageId: () => generateId(),
       headers: {
         'X-Conversation-Id': conversationId,
+        'X-Cache-Hit': 'false',
       }
     });
 
