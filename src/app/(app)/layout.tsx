@@ -270,8 +270,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       });
 
       if (!uploadRes.ok) {
-        const err = await uploadRes.json();
-        throw new Error(err.error || 'Upload failed');
+        const text = await uploadRes.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || 'Upload failed');
+        } catch {
+          throw new Error(`Upload failed: ${uploadRes.status} ${text.substring(0, 40)}...`);
+        }
       }
 
       const { filePath, fileName, mimeType, size } = await uploadRes.json();
@@ -286,8 +291,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       });
 
       if (!ingestRes.ok) {
-        const err = await ingestRes.json();
-        throw new Error(err.error || 'Processing failed');
+        const text = await ingestRes.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || 'Processing failed');
+        } catch {
+          throw new Error(`Processing failed: ${ingestRes.status} ${text.substring(0, 40)}...`);
+        }
       }
 
       setUploading({ fileName: file.name, status: 'done' });

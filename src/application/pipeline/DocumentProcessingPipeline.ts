@@ -8,9 +8,7 @@ import { TavilyClient } from '@/infrastructure/tavily/TavilyClient';
 import { generateWithOpenRouter } from '@/infrastructure/llm/OpenRouterLLMProvider';
 import { SupabaseCacheService } from '@/infrastructure/cache/SupabaseCacheService';
 
-// Document Parsing
-import pdfParse from 'pdf-parse';
-import mammoth from 'mammoth';
+// Document Parsing (dynamically imported to prevent Vercel 500 crashes)
 
 export class DocumentProcessingPipeline {
   constructor(
@@ -49,9 +47,11 @@ export class DocumentProcessingPipeline {
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
         let text = '';
         if (ext === 'pdf') {
+          const pdfParse = (await import('pdf-parse')).default;
           const data = await pdfParse(buffer);
           text = data.text;
         } else if (ext === 'docx') {
+          const mammoth = await import('mammoth');
           const result = await mammoth.extractRawText({ buffer });
           text = result.value;
         } else {
@@ -138,9 +138,11 @@ export class DocumentProcessingPipeline {
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
         let text = '';
         if (ext === 'pdf') {
+          const pdfParse = (await import('pdf-parse')).default;
           const data = await pdfParse(buffer);
           text = data.text;
         } else if (ext === 'docx') {
+          const mammoth = await import('mammoth');
           const result = await mammoth.extractRawText({ buffer });
           text = result.value;
         } else {
